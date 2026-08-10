@@ -84,6 +84,30 @@ export default function TournamentSettingsForm({
   const [planAccessIds, setPlanAccessIds] = useState<string[]>(tournament.planAccessPlayerIds ?? []);
   const [error, setError] = useState<string | null>(null);
 
+  // Operational: settle the Cup-winner futures market. Separate from the player
+  // futures below because it needs the Cup result, which nothing else infers.
+  const [cupWinner, setCupWinner] = useState<"" | "teamA" | "teamB" | "push">("");
+  const [cupSettling, setCupSettling] = useState(false);
+  const [cupSettleMsg, setCupSettleMsg] = useState<string | null>(null);
+  const handleSettleCupFutures = async () => {
+    if (cupWinner === "") return;
+    const outcome =
+      cupWinner === "push"
+        ? "refund every Cup-winner bet (tie)"
+        : `pay out every Cup-winner bet to ${(cupWinner === "teamA" ? teamA.name : teamB.name) || cupWinner} backers`;
+    if (!window.confirm(`Settle the Cup-winner market and ${outcome}? This can't be undone.`)) return;
+    setCupSettling(true);
+    setCupSettleMsg(null);
+    try {
+      const res = await betsApi.settleCupFutures({ tournamentId: tournament.id, winningTeam: cupWinner });
+      setCupSettleMsg(`Settled ${res.settledCount} Cup-winner bet${res.settledCount === 1 ? "" : "s"}.`);
+    } catch (e) {
+      setCupSettleMsg(e instanceof Error ? e.message : "Couldn't settle Cup futures");
+    } finally {
+      setCupSettling(false);
+    }
+  };
+
   // Operational: settle the tournament-long player-futures markets.
   const [settling, setSettling] = useState(false);
   const [settleMsg, setSettleMsg] = useState<string | null>(null);
@@ -364,11 +388,40 @@ export default function TournamentSettingsForm({
 
       {tournament.sportsbookEnabled && (
         <div className="rounded-lg border border-gray-200 p-3 space-y-2">
+          <div className="text-sm font-semibold">Settle Cup-winner futures</div>
+          <p className="text-xs text-gray-500">
+            Resolves active bets on who wins the Cup. These do not settle automatically — pick the
+            winning team and run this once the Cup is decided. A tie refunds every bet.
+          </p>
+          <select
+            value={cupWinner}
+            onChange={(e) => setCupWinner(e.target.value as "" | "teamA" | "teamB" | "push")}
+            className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+          >
+            <option value="">Select the Cup winner…</option>
+            <option value="teamA">{teamA.name || "Team A"} won the Cup</option>
+            <option value="teamB">{teamB.name || "Team B"} won the Cup</option>
+            <option value="push">Tie — refund all Cup bets</option>
+          </select>
+          <button
+            type="button"
+            onClick={handleSettleCupFutures}
+            disabled={cupSettling || cupWinner === ""}
+            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {cupSettling ? "Settling…" : "Settle Cup futures"}
+          </button>
+          {cupSettleMsg && <p className="text-xs text-gray-700">{cupSettleMsg}</p>}
+        </div>
+      )}
+
+      {tournament.sportsbookEnabled && (
+        <div className="rounded-lg border border-gray-200 p-3 space-y-2">
           <div className="text-sm font-semibold">Settle player futures</div>
           <p className="text-xs text-gray-500">
             Resolves active player matchups and tournament-points over/unders from each player's total
-            points. Run once the tournament is complete (all matches closed). Other markets settle
-            automatically as matches finish.
+            points. Run once the tournament is complete (all matches closed). Match and round bets
+            settle automatically as matches finish; Cup-winner bets need the button above.
           </p>
           <button
             type="button"
