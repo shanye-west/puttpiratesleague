@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import Layout from "../../components/Layout";
-import StatusBanner from "../../components/admin/StatusBanner";
+import { useNavigate, useParams } from "react-router-dom";
+import AdminPage, { AdminNotFound } from "../../components/admin/AdminPage";
+import AdminSection from "../../components/admin/AdminSection";
 import MatchForm, { type MatchFormValues } from "../../components/admin/MatchForm";
 import { useAdminTournament } from "../../contexts/AdminTournamentContext";
 import { adminApi } from "../../api/admin";
 import { getErrorMessage } from "../../api/errors";
 import { localInputToStored } from "../../utils/teeTime";
+import { formatRoundType } from "../../utils";
 import type { SeedMatchRequest } from "../../api/adminContracts";
 
 /** Create a match inside a known tournament + round — no selectors needed. */
@@ -45,41 +46,51 @@ export default function MatchCreate() {
     }
   };
 
+  const breadcrumbs = [
+    { label: "Admin", to: "/admin" },
+    { label: tournament?.name ?? "Tournament", to: `/admin/t/${tournamentId}` },
+    ...(round ? [{ label: `Day ${round.day ?? "?"}`, to: `/admin/t/${tournamentId}/round/${round.id}` }] : []),
+    { label: "New match" },
+  ];
+
   if (loading) {
     return (
-      <Layout title="Add Match" showBack>
-        <div className="p-4">Loading...</div>
-      </Layout>
+      <AdminPage title="New match" breadcrumbs={breadcrumbs} loading>
+        {null}
+      </AdminPage>
     );
   }
 
   if (!tournament || !round) {
     return (
-      <Layout title="Add Match" showBack>
-        <div className="p-4 space-y-4">
-          <StatusBanner error={!tournament ? "Tournament not found" : "Round not found"} />
-          <Link to={`/admin/t/${tournamentId}`} className="btn btn-secondary">Back to Tournament</Link>
-        </div>
-      </Layout>
+      <AdminNotFound
+        title="New match"
+        message={!tournament ? "Tournament not found" : "Round not found"}
+        backTo={`/admin/t/${tournamentId}`}
+        backLabel="Back to tournament"
+        breadcrumbs={breadcrumbs}
+      />
     );
   }
 
   return (
-    <Layout title={`Add Match — Day ${round.day}`} showBack>
-      <div className="p-4 max-w-2xl mx-auto space-y-4">
-        <StatusBanner error={error} />
-        <div className="text-sm text-gray-600">
-          {tournament.year} {tournament.name} · Day {round.day} · {round.format || "Format TBD"}.
-          Strokes are calculated from the tournament handicaps and the round's course.
-        </div>
+    <AdminPage
+      headerTitle={`${tournament.year} ${tournament.name}`}
+      breadcrumbs={breadcrumbs}
+      eyebrow={`Day ${round.day} · ${formatRoundType(round.format)}`}
+      title="New match"
+      description="Strokes are calculated from the tournament handicaps and the round's course."
+      error={error}
+    >
+      <AdminSection title="Match details" description="Pick the players from each roster.">
         <MatchForm
           tournament={tournament}
           players={players}
           submitting={submitting}
-          submitLabel="Create Match"
+          submitLabel="Create match"
           onSubmit={handleSubmit}
         />
-      </div>
-    </Layout>
+      </AdminSection>
+    </AdminPage>
   );
 }

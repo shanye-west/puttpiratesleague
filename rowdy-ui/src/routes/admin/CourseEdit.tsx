@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
-import Layout from "../../components/Layout";
-import StatusBanner from "../../components/admin/StatusBanner";
+import AdminPage from "../../components/admin/AdminPage";
 import AdminSection from "../../components/admin/AdminSection";
 import ConfirmDialog from "../../components/admin/ConfirmDialog";
+import { Field, InfoNote } from "../../components/admin/fields";
+import { inputClass, monoInputClass } from "../../components/admin/inputStyles";
+import { Button } from "../../components/ui/button";
 import { adminApi } from "../../api/admin";
 import { getErrorMessage } from "../../api/errors";
+import { cn } from "../../lib/utils";
 import type { CourseDoc } from "../../types";
 
 interface HoleRow {
@@ -22,7 +25,8 @@ const blankHoles = (): HoleRow[] =>
 /**
  * Create or edit a course: name/tees/rating/slope plus the 18-hole grid.
  * Server-side upsertCourse enforces the full invariants (unique hole numbers,
- * unique hcpIndex 1-18, par 3-6, totals); we surface its messages directly.
+ * unique hcpIndex 1-18, par 3-6, totals); the handicap-index check below is a
+ * client-side preview of the same rule so you catch it before submitting.
  */
 export default function CourseEdit() {
   const navigate = useNavigate();
@@ -76,6 +80,21 @@ export default function CourseEdit() {
     [holes]
   );
 
+  const yardsTotal = useMemo(
+    () => holes.reduce((sum, h) => sum + (Number(h.yards) || 0), 0),
+    [holes]
+  );
+
+  /** Handicap indexes must use each of 1-18 exactly once — flag it early. */
+  const hcpProblem = useMemo(() => {
+    const used = holes.map((h) => Number(h.hcpIndex)).filter((n) => Number.isFinite(n) && n > 0);
+    const dupes = used.filter((n, i) => used.indexOf(n) !== i);
+    if (dupes.length > 0) return `Handicap index repeated: ${[...new Set(dupes)].sort((a, b) => a - b).join(", ")}`;
+    const missing = Array.from({ length: 18 }, (_, i) => i + 1).filter((n) => !used.includes(n));
+    if (missing.length > 0) return `Handicap index missing: ${missing.join(", ")}`;
+    return null;
+  }, [holes]);
+
   const updateHole = (idx: number, patch: Partial<HoleRow>) => {
     setHoles((prev) => prev.map((h, i) => (i === idx ? { ...h, ...patch } : h)));
   };
@@ -128,143 +147,146 @@ export default function CourseEdit() {
     }
   };
 
-  if (loading) {
-    return (
-      <Layout title="Course" showBack>
-        <div className="p-4">Loading...</div>
-      </Layout>
-    );
-  }
+  const breadcrumbs = [
+    { label: "Admin", to: "/admin" },
+    { label: "Courses", to: "/admin/courses" },
+    { label: isNew ? "New course" : name || courseId },
+  ];
 
   return (
-    <Layout title={isNew ? "New Course" : name || courseId} showBack>
-      <div className="p-4 max-w-2xl mx-auto space-y-4">
-        <StatusBanner error={error} success={success} />
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <AdminSection
-            title="Course Details"
-            description="Saving rewrites the whole course. Existing matches keep their seeded strokes — use Recalculate Strokes on a match to apply course changes."
-          >
-            <div className="grid grid-cols-2 gap-3">
-              {isNew && (
-                <div className="col-span-2">
-                  <label className="block text-sm font-semibold mb-1">
-                    Course ID <span className="font-normal text-gray-500">(optional, auto-generated if blank)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={newCourseId}
-                    onChange={(e) => setNewCourseId(e.target.value)}
-                    placeholder="e.g. chambers-bay"
-                    className="w-full p-2 border border-gray-300 rounded-lg font-mono text-sm"
-                  />
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-semibold mb-1">Name</label>
+    <AdminPage
+      title={isNew ? "New course" : name || courseId}
+      breadcrumbs={breadcrumbs}
+      description={
+        isNew
+          ? "Pars and handicap indexes drive stroke allocation and skins, so get them right before a round points here."
+          : "Saving rewrites the whole course. Existing matches keep their seeded strokes — use Recalculate strokes on a match to apply changes."
+      }
+      error={error}
+      success={success}
+      loading={loading}
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <AdminSection title="Course details">
+          <div className="grid grid-cols-2 gap-3">
+            {isNew && (
+              <Field label="Course ID" optional hint="Auto-generated when blank." className="col-span-2">
                 <input
                   type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg"
-                  required
+                  value={newCourseId}
+                  onChange={(e) => setNewCourseId(e.target.value)}
+                  placeholder="e.g. chambers-bay"
+                  className={monoInputClass}
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-1">Tees</label>
-                <input
-                  type="text"
-                  value={tees}
-                  onChange={(e) => setTees(e.target.value)}
-                  placeholder="e.g. Blue"
-                  className="w-full p-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-1">Rating</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="50"
-                  max="90"
-                  value={rating}
-                  onChange={(e) => setRating(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-1">Slope</label>
-                <input
-                  type="number"
-                  min="55"
-                  max="155"
-                  value={slope}
-                  onChange={(e) => setSlope(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg"
-                  required
-                />
-              </div>
-            </div>
-            <div className="mt-3 text-sm text-gray-600">
-              Par (sum of holes): <span className="font-semibold">{parTotal}</span>
-            </div>
-          </AdminSection>
+              </Field>
+            )}
+            <Field label="Name">
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className={inputClass}
+                required
+              />
+            </Field>
+            <Field label="Tees">
+              <input
+                type="text"
+                value={tees}
+                onChange={(e) => setTees(e.target.value)}
+                placeholder="e.g. Blue"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Rating">
+              <input
+                type="number"
+                step="0.1"
+                min="50"
+                max="90"
+                value={rating}
+                onChange={(e) => setRating(e.target.value)}
+                className={inputClass}
+                required
+              />
+            </Field>
+            <Field label="Slope">
+              <input
+                type="number"
+                min="55"
+                max="155"
+                value={slope}
+                onChange={(e) => setSlope(e.target.value)}
+                className={inputClass}
+                required
+              />
+            </Field>
+          </div>
+          <InfoNote className="mt-3">
+            Par <span className="font-semibold text-foreground">{parTotal}</span>
+            {yardsTotal > 0 && (
+              <> · <span className="font-semibold text-foreground">{yardsTotal.toLocaleString()}</span> yards</>
+            )}{" "}
+            — totalled from the holes below.
+          </InfoNote>
+        </AdminSection>
 
-          <AdminSection
-            title="Holes"
-            description="Handicap index ranks hole difficulty: 1 = hardest, 18 = easiest. Each value 1-18 must be used exactly once."
-          >
-            <div className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 items-center text-sm">
-              <div className="font-semibold text-xs text-gray-500">#</div>
-              <div className="font-semibold text-xs text-gray-500">Par</div>
-              <div className="font-semibold text-xs text-gray-500">Hcp Index</div>
-              <div className="font-semibold text-xs text-gray-500">Yards</div>
-              {holes.map((h, i) => (
-                <HoleRowInputs key={i} index={i} row={h} onChange={updateHole} />
-              ))}
-            </div>
-          </AdminSection>
-
-          <button type="submit" disabled={busy} className="btn btn-primary w-full">
-            {busy ? "Saving..." : isNew ? "Create Course" : "Save Course"}
-          </button>
-        </form>
-
-        {!isNew && (
-          <AdminSection
-            title="Delete Course"
-            description="Blocked while any round references this course."
-            danger
-          >
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              disabled={busy}
-              className="btn bg-red-600 text-white"
-            >
-              Delete Course
-            </button>
-          </AdminSection>
-        )}
-
-        <Link to="/admin/courses" className="btn btn-secondary block text-center">Back to Courses</Link>
-
-        <ConfirmDialog
-          isOpen={confirmDelete}
-          title="Delete course?"
-          confirmLabel="Delete Course"
-          danger
-          busy={busy}
-          onConfirm={handleDelete}
-          onCancel={() => setConfirmDelete(false)}
+        <AdminSection
+          title="Holes"
+          description="Handicap index ranks hole difficulty: 1 = hardest, 18 = easiest. Each value 1-18 must be used exactly once."
         >
-          Permanently deletes <strong>{name || courseId}</strong>. The server refuses if any round
-          still references it.
-        </ConfirmDialog>
-      </div>
-    </Layout>
+          {hcpProblem && (
+            <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700">
+              {hcpProblem}
+            </div>
+          )}
+          <div className="grid grid-cols-[1.75rem_1fr_1fr_1fr] items-center gap-2">
+            <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">#</div>
+            <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">Par</div>
+            <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">Hcp</div>
+            <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">Yards</div>
+            {holes.map((h, i) => (
+              <HoleRowInputs key={i} index={i} row={h} onChange={updateHole} />
+            ))}
+          </div>
+        </AdminSection>
+
+        <Button type="submit" disabled={busy} className="w-full">
+          {busy ? "Saving…" : isNew ? "Create course" : "Save course"}
+        </Button>
+      </form>
+
+      {!isNew && (
+        <AdminSection
+          title="Delete course"
+          description="Blocked while any round still references this course."
+          danger
+        >
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setConfirmDelete(true)}
+            disabled={busy}
+            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            Delete course
+          </Button>
+        </AdminSection>
+      )}
+
+      <ConfirmDialog
+        isOpen={confirmDelete}
+        title="Delete course?"
+        confirmLabel="Delete course"
+        danger
+        busy={busy}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      >
+        Permanently deletes <strong>{name || courseId}</strong>. The server refuses if any round
+        still references it.
+      </ConfirmDialog>
+    </AdminPage>
   );
 }
 
@@ -277,16 +299,18 @@ function HoleRowInputs({
   row: HoleRow;
   onChange: (idx: number, patch: Partial<HoleRow>) => void;
 }) {
+  const cell = cn(inputClass, "px-2 py-1.5 text-center");
   return (
     <>
-      <div className="font-semibold">{index + 1}</div>
+      <div className="text-sm font-semibold text-muted-foreground">{index + 1}</div>
       <input
         type="number"
         min="3"
         max="6"
         value={row.par}
         onChange={(e) => onChange(index, { par: e.target.value })}
-        className="p-2 border border-gray-300 rounded-lg"
+        className={cell}
+        aria-label={`Hole ${index + 1} par`}
         required
       />
       <input
@@ -295,7 +319,8 @@ function HoleRowInputs({
         max="18"
         value={row.hcpIndex}
         onChange={(e) => onChange(index, { hcpIndex: e.target.value })}
-        className="p-2 border border-gray-300 rounded-lg"
+        className={cell}
+        aria-label={`Hole ${index + 1} handicap index`}
         required
       />
       <input
@@ -304,7 +329,8 @@ function HoleRowInputs({
         value={row.yards}
         onChange={(e) => onChange(index, { yards: e.target.value })}
         placeholder="—"
-        className="p-2 border border-gray-300 rounded-lg"
+        className={cell}
+        aria-label={`Hole ${index + 1} yards`}
       />
     </>
   );

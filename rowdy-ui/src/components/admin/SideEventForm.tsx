@@ -1,4 +1,9 @@
 import { useState } from "react";
+import { Minus, Plus } from "lucide-react";
+import { Button } from "../ui/button";
+import { Field, FieldGroup, ToggleList, ToggleRow } from "./fields";
+import { inputClass } from "./inputStyles";
+import { cn } from "../../lib/utils";
 import type { CourseDoc, SideEventDoc, SideEventNine, SideEventPayout } from "../../types";
 import type { SideEventUpdates } from "../../api/adminContracts";
 
@@ -95,96 +100,81 @@ export default function SideEventForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-semibold mb-1">Name</label>
+      <Field label="Name" hint="Shown on the page and in the hamburger menu.">
         <input
           type="text"
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
           placeholder="3-Man Scramble"
           maxLength={60}
-          className="w-full p-2 border border-gray-300 rounded-lg"
+          className={inputClass}
           required
         />
-        <p className="mt-1 text-xs text-gray-500">Shown on the page and in the hamburger menu.</p>
-      </div>
+      </Field>
 
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-semibold mb-1">Course</label>
+        <Field label="Course" hint="Without one the leaderboard ranks by raw total, with no par.">
           <select
             value={form.courseId}
             onChange={(e) => setForm({ ...form, courseId: e.target.value })}
-            className="w-full p-2 border border-gray-300 rounded-lg"
+            className={inputClass}
           >
             <option value="">No course</option>
             {courses.map((c) => (
               <option key={c.id} value={c.id}>{c.name || c.id}</option>
             ))}
           </select>
-        </div>
-        <div>
-          <label className="block text-sm font-semibold mb-1">Which nine</label>
+        </Field>
+        <Field label="Which nine">
           <select
             value={form.nine}
             onChange={(e) => setForm({ ...form, nine: e.target.value as SideEventNine })}
-            className="w-full p-2 border border-gray-300 rounded-lg"
+            className={inputClass}
           >
             <option value="front">Front 9 (holes 1–9)</option>
             <option value="back">Back 9 (holes 10–18)</option>
           </select>
-        </div>
-      </div>
-      <p className="-mt-2 text-xs text-gray-500">
-        Without a course the leaderboard still works — it just ranks by raw total with no par.
-      </p>
-
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.locked}
-            onChange={(e) => setForm({ ...form, locked: e.target.checked })}
-          />
-          <span className="font-semibold">Locked</span>
-          <span className="text-gray-500">(freezes score entry for every team)</span>
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.hidden}
-            onChange={(e) => setForm({ ...form, hidden: e.target.checked })}
-          />
-          <span className="font-semibold">Hide from menu</span>
-          <span className="text-gray-500">(keeps the data, drops the link)</span>
-        </label>
+        </Field>
       </div>
 
-      <div className="border border-gray-200 rounded-lg p-4">
-        <div className="text-sm font-semibold mb-1">Payouts</div>
-        <p className="text-xs text-gray-500 mb-3">
-          How many places pay, and how much. Editable at any time. Tied teams pool the places
-          they cover and split evenly.
-        </p>
+      <ToggleList>
+        <ToggleRow
+          label="Locked"
+          description="Freezes score entry for every team."
+          checked={form.locked}
+          onChange={(locked) => setForm({ ...form, locked })}
+        />
+        <ToggleRow
+          label="Hide from menu"
+          description="Keeps the data, drops the link."
+          checked={form.hidden}
+          onChange={(hidden) => setForm({ ...form, hidden })}
+        />
+      </ToggleList>
 
+      <FieldGroup
+        title="Payouts"
+        description="How many places pay, and how much. Editable at any time. Tied teams pool the places they cover and split evenly."
+      >
         {form.payoutAmounts.length === 0 ? (
-          <div className="text-sm text-gray-500 mb-3">No payouts — nobody gets paid.</div>
+          <p className="text-sm text-muted-foreground">No payouts — nobody gets paid.</p>
         ) : (
-          <div className="space-y-2 mb-3">
+          <div className="space-y-2">
             {form.payoutAmounts.map((amount, idx) => (
               <div key={idx} className="flex items-center gap-2">
-                <span className="w-16 text-sm font-semibold">
+                <span className="w-10 text-sm font-semibold">
                   {idx + 1}
                   {idx === 0 ? "st" : idx === 1 ? "nd" : idx === 2 ? "rd" : "th"}
                 </span>
-                <span className="text-sm text-gray-500">$</span>
+                <span className="text-sm text-muted-foreground">$</span>
                 <input
                   type="number"
                   min="0"
                   step="1"
                   value={amount}
                   onChange={(e) => setPayout(idx, e.target.value)}
-                  className="flex-1 p-2 border border-gray-300 rounded-lg"
+                  className={cn(inputClass, "flex-1")}
+                  aria-label={`Payout for place ${idx + 1}`}
                 />
               </div>
             ))}
@@ -192,20 +182,22 @@ export default function SideEventForm({
         )}
 
         <div className="flex gap-2">
-          <button type="button" onClick={addPlace} className="btn btn-secondary text-sm">
-            + Add place
-          </button>
+          <Button type="button" variant="outline" size="sm" onClick={addPlace}>
+            <Plus className="h-4 w-4" />
+            Add place
+          </Button>
           {form.payoutAmounts.length > 0 && (
-            <button type="button" onClick={removeLastPlace} className="btn btn-secondary text-sm">
-              − Remove last
-            </button>
+            <Button type="button" variant="ghost" size="sm" onClick={removeLastPlace}>
+              <Minus className="h-4 w-4" />
+              Remove last
+            </Button>
           )}
         </div>
-      </div>
+      </FieldGroup>
 
-      <button type="submit" disabled={submitting} className="btn btn-primary w-full">
-        {submitting ? "Saving..." : submitLabel}
-      </button>
+      <Button type="submit" disabled={submitting} className="w-full">
+        {submitting ? "Saving…" : submitLabel}
+      </Button>
     </form>
   );
 }

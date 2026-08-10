@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import { ExternalLink, Plus } from "lucide-react";
 import { db } from "../../firebase";
-import Layout from "../../components/Layout";
-import StatusBanner from "../../components/admin/StatusBanner";
+import AdminPage, { AdminNotFound } from "../../components/admin/AdminPage";
 import AdminSection from "../../components/admin/AdminSection";
 import ConfirmDialog from "../../components/admin/ConfirmDialog";
 import SideEventForm from "../../components/admin/SideEventForm";
+import { inputClass } from "../../components/admin/inputStyles";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { cn } from "../../lib/utils";
 import { useAdminTournament } from "../../contexts/AdminTournamentContext";
 import { adminApi } from "../../api/admin";
 import { getErrorMessage } from "../../api/errors";
@@ -241,22 +245,29 @@ export default function SideEventAdmin() {
     }
   };
 
+  const breadcrumbs = [
+    { label: "Admin", to: "/admin" },
+    { label: tournament?.name ?? "Tournament", to: `/admin/t/${tournamentId}` },
+    { label: isNew ? "New side event" : event?.name ?? "Side event" },
+  ];
+
   if (ctxLoading || coursesLoading || !eventLoaded) {
     return (
-      <Layout title={isNew ? "Create Side Event" : "Side Event Admin"} showBack>
-        <div className="p-4">Loading...</div>
-      </Layout>
+      <AdminPage title={isNew ? "New side event" : "Side event"} breadcrumbs={breadcrumbs} loading>
+        {null}
+      </AdminPage>
     );
   }
 
   if (!isNew && !event) {
     return (
-      <Layout title="Side Event Admin" showBack>
-        <div className="p-4 space-y-4">
-          <StatusBanner error="Side event not found" />
-          <Link to={`/admin/t/${tournamentId}`} className="btn btn-secondary">Back to Tournament</Link>
-        </div>
-      </Layout>
+      <AdminNotFound
+        title="Side event"
+        message="Side event not found"
+        backTo={`/admin/t/${tournamentId}`}
+        backLabel="Back to tournament"
+        breadcrumbs={breadcrumbs}
+      />
     );
   }
 
@@ -270,7 +281,8 @@ export default function SideEventAdmin() {
             <select
               value={pid}
               onChange={(e) => onChange(idx, e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-lg"
+              className={inputClass}
+              aria-label={`Player slot ${idx + 1}`}
             >
               <option value="">— empty —</option>
               {allPlayers.map((p) => (
@@ -278,7 +290,7 @@ export default function SideEventAdmin() {
               ))}
             </select>
             {clash !== null && (
-              <div className="mt-1 text-xs text-amber-700">
+              <div className="mt-1 text-xs text-amber-600">
                 Already on team {clash} — saving will be rejected.
               </div>
             )}
@@ -304,13 +316,13 @@ export default function SideEventAdmin() {
 
     return (
       <div className="pt-2">
-        <div className="text-xs font-semibold text-gray-600 mb-1">
-          Scores <span className="font-normal text-gray-500">(admin override — blank clears)</span>
+        <div className="mb-1 text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">
+          Scores <span className="font-normal normal-case tracking-normal">(admin override — blank clears)</span>
         </div>
         <div className="grid grid-cols-9 gap-1">
           {holes.map((hole) => (
             <div key={hole}>
-              <div className="text-center text-[0.6rem] text-gray-500">{hole}</div>
+              <div className="text-center text-[0.6rem] text-muted-foreground">{hole}</div>
               <input
                 type="number"
                 min="1"
@@ -319,173 +331,192 @@ export default function SideEventAdmin() {
                 aria-label={`Hole ${hole} score for team ${team.teamNumber}`}
                 value={valueFor(hole)}
                 onChange={(e) => setScore(hole, e.target.value)}
-                className="w-full p-1 text-center border border-gray-300 rounded"
+                className={cn(inputClass, "px-1 py-1 text-center")}
               />
             </div>
           ))}
         </div>
         {draft && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => saveTeamScores(team, draft)}
             disabled={teamBusyId === team.id}
-            className="btn btn-secondary text-sm mt-2"
+            className="mt-2"
           >
-            {teamBusyId === team.id ? "Saving..." : "Save scores"}
-          </button>
+            {teamBusyId === team.id ? "Saving…" : "Save scores"}
+          </Button>
         )}
       </div>
     );
   };
 
-  const title = isNew ? "Create Side Event" : event!.name;
+  const title = isNew ? "New side event" : event!.name;
 
   return (
-    <Layout title={title} showBack>
-      <div className="p-4 space-y-4 max-w-2xl mx-auto">
-        <StatusBanner error={error} success={success} />
-
-        {!isNew && (
-          <p className="text-sm text-gray-600">
-            This event awards <strong>no Cup points</strong> and records{" "}
-            <strong>no player stats</strong> — it lives in its own collections, apart from rounds
-            and matches. It never appears on the tournament home page; players reach it from the
-            hamburger menu.
-          </p>
-        )}
-
-        <AdminSection
-          title={isNew ? "New Side Event" : "Settings & Payouts"}
-          description="Name, course and nine, the lock, menu visibility, and the payout schedule."
-        >
-          <SideEventForm
-            key={isNew ? "new" : event!.id}
-            initial={isNew ? undefined : event!}
-            courses={courses}
-            submitting={submitting}
-            submitLabel={isNew ? "Create Side Event" : "Save Side Event"}
-            onSubmit={handleSubmit}
-          />
-        </AdminSection>
-
-        {!isNew && (
+    <AdminPage
+      headerTitle={tournament ? `${tournament.year} ${tournament.name}` : "Admin"}
+      breadcrumbs={breadcrumbs}
+      eyebrow="Side event"
+      title={title}
+      description="Awards no Cup points and records no player stats — it lives in its own collections, apart from rounds and matches. Players reach it from the hamburger menu only."
+      badges={
+        !isNew ? (
           <>
-            <AdminSection
-              title="Teams"
-              description={`Pick any ${MIN_TEAM_SIZE}–${MAX_TEAM_SIZE} players from either roster — teams are not restricted to ${tournament?.teamA?.name ?? "Team A"} or ${tournament?.teamB?.name ?? "Team B"}.`}
-            >
-              <div className="space-y-4">
-                {teams.map((team) => {
-                  const slots = slotsFor(team);
-                  const dirty = draftTeams[team.id] !== undefined;
-                  return (
-                    <div key={team.id} className="p-3 border border-gray-200 rounded-lg space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="font-semibold">Team {team.teamNumber}</div>
-                        <div className="text-xs text-gray-500 font-mono">{team.id}</div>
-                      </div>
+            {event!.locked && <Badge variant="muted">locked</Badge>}
+            {event!.hidden && <Badge variant="warning">hidden</Badge>}
+            <Badge variant="outline">{event!.nine === "back" ? "back 9" : "front 9"}</Badge>
+          </>
+        ) : null
+      }
+      error={error}
+      success={success}
+      actions={
+        !isNew ? (
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/side-event/${sideEventId}`}>
+              <ExternalLink className="h-4 w-4" />
+              View
+            </Link>
+          </Button>
+        ) : null
+      }
+    >
+      <AdminSection
+        title={isNew ? "New side event" : "Settings & payouts"}
+        description="Name, course and nine, the lock, menu visibility, and the payout schedule."
+      >
+        <SideEventForm
+          key={isNew ? "new" : event!.id}
+          initial={isNew ? undefined : event!}
+          courses={courses}
+          submitting={submitting}
+          submitLabel={isNew ? "Create side event" : "Save side event"}
+          onSubmit={handleSubmit}
+        />
+      </AdminSection>
 
-                      {renderSlots(team.id, slots, (i, v) => setSlot(team.id, i, v, slots))}
-
-                      {renderScores(team)}
-
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setSlot(team.id, slots.length, "", slots)}
-                          disabled={slots.length >= MAX_TEAM_SIZE}
-                          className="btn btn-secondary text-sm"
-                        >
-                          + Add slot
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => saveTeam(team.id, slots)}
-                          disabled={!dirty || teamBusyId === team.id}
-                          className="btn btn-primary text-sm"
-                        >
-                          {teamBusyId === team.id ? "Saving..." : "Save team"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeTeam(team.id)}
-                          disabled={teamBusyId === team.id}
-                          className="btn btn-secondary text-sm text-red-600"
-                        >
-                          Remove
-                        </button>
-                      </div>
+      {!isNew && (
+        <>
+          <AdminSection
+            title={`Teams (${teams.length})`}
+            description={`Pick any ${MIN_TEAM_SIZE}–${MAX_TEAM_SIZE} players from either roster — teams are not restricted to ${tournament?.teamA?.name ?? "Team A"} or ${tournament?.teamB?.name ?? "Team B"}.`}
+          >
+            <div className="space-y-4">
+              {teams.map((team) => {
+                const slots = slotsFor(team);
+                const dirty = draftTeams[team.id] !== undefined;
+                return (
+                  <div key={team.id} className="space-y-2 rounded-xl border border-border/70 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold">Team {team.teamNumber}</div>
+                      {dirty && <Badge variant="warning">unsaved</Badge>}
                     </div>
-                  );
-                })}
 
-                {teams.length === 0 && <div className="text-sm text-gray-500">No teams yet.</div>}
+                    {renderSlots(team.id, slots, (i, v) => setSlot(team.id, i, v, slots))}
 
-                <div className="p-3 border border-dashed border-gray-300 rounded-lg space-y-2">
-                  <div className="font-semibold">Add a team</div>
-                  {renderSlots(null, newTeam, (i, v) => {
-                    const next = [...newTeam];
-                    next[i] = v;
-                    setNewTeam(next);
-                  })}
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setNewTeam([...newTeam, ""])}
-                      disabled={newTeam.length >= MAX_TEAM_SIZE}
-                      className="btn btn-secondary text-sm"
-                    >
-                      + Add slot
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => saveTeam(null, newTeam)}
-                      disabled={teamBusyId === "new"}
-                      className="btn btn-primary text-sm"
-                    >
-                      {teamBusyId === "new" ? "Adding..." : "Add team"}
-                    </button>
+                    {renderScores(team)}
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSlot(team.id, slots.length, "", slots)}
+                        disabled={slots.length >= MAX_TEAM_SIZE}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Slot
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => saveTeam(team.id, slots)}
+                        disabled={!dirty || teamBusyId === team.id}
+                      >
+                        {teamBusyId === team.id ? "Saving…" : "Save team"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeTeam(team.id)}
+                        disabled={teamBusyId === team.id}
+                        className="ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   </div>
+                );
+              })}
+
+              {teams.length === 0 && (
+                <p className="text-sm text-muted-foreground">No teams yet.</p>
+              )}
+
+              <div className="space-y-2 rounded-xl border border-dashed border-border p-3">
+                <div className="text-sm font-semibold">Add a team</div>
+                {renderSlots(null, newTeam, (i, v) => {
+                  const next = [...newTeam];
+                  next[i] = v;
+                  setNewTeam(next);
+                })}
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setNewTeam([...newTeam, ""])}
+                    disabled={newTeam.length >= MAX_TEAM_SIZE}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Slot
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => saveTeam(null, newTeam)}
+                    disabled={teamBusyId === "new"}
+                  >
+                    {teamBusyId === "new" ? "Adding…" : "Add team"}
+                  </Button>
                 </div>
               </div>
-            </AdminSection>
+            </div>
+          </AdminSection>
 
-            <AdminSection title="View" description="The player-facing leaderboard for this event.">
-              <Link to={`/side-event/${sideEventId}`} className="btn btn-primary">
-                Open leaderboard
-              </Link>
-            </AdminSection>
-
-            <AdminSection
-              title="Delete Side Event"
-              description="Removes the event and all of its teams and scores. Nothing else is affected — side events never touch Cup points or stats."
-              danger
+          <AdminSection
+            title="Delete side event"
+            description="Removes the event and all of its teams and scores. Nothing else is affected — side events never touch Cup points or stats."
+            danger
+          >
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleting}
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                disabled={deleting}
-                className="btn bg-red-600 text-white"
-              >
-                Delete Side Event
-              </button>
-            </AdminSection>
+              Delete side event
+            </Button>
+          </AdminSection>
 
-            <ConfirmDialog
-              isOpen={confirmDelete}
-              title="Delete side event?"
-              confirmLabel="Delete Side Event"
-              danger
-              busy={deleting}
-              onConfirm={handleDelete}
-              onCancel={() => setConfirmDelete(false)}
-            >
-              This permanently deletes <strong>{event!.name}</strong> and its{" "}
-              <strong>{teams.length} team{teams.length === 1 ? "" : "s"}</strong> with their scores.
-            </ConfirmDialog>
-          </>
-        )}
-      </div>
-    </Layout>
+          <ConfirmDialog
+            isOpen={confirmDelete}
+            title="Delete side event?"
+            confirmLabel="Delete side event"
+            danger
+            busy={deleting}
+            onConfirm={handleDelete}
+            onCancel={() => setConfirmDelete(false)}
+          >
+            This permanently deletes <strong>{event!.name}</strong> and its{" "}
+            <strong>{teams.length} team{teams.length === 1 ? "" : "s"}</strong> with their scores.
+          </ConfirmDialog>
+        </>
+      )}
+    </AdminPage>
   );
 }

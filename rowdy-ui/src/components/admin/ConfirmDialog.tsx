@@ -30,7 +30,7 @@ export default function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Modal isOpen={isOpen} onClose={onCancel} title={title}>
-      <div className="text-sm text-gray-700 mb-4">{children}</div>
+      <div className="mb-4 text-sm text-muted-foreground">{children}</div>
       <ModalActions
         primaryLabel={busy ? "Working..." : confirmLabel}
         onPrimary={busy ? () => {} : onConfirm}

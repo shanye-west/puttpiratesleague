@@ -1,28 +1,34 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { collection, getDocs } from "firebase/firestore";
+import { ChevronDown, ChevronUp, ExternalLink, Lock, Plus, Users } from "lucide-react";
 import { db } from "../../firebase";
-import Layout from "../../components/Layout";
-import StatusBanner from "../../components/admin/StatusBanner";
+import AdminPage, { AdminNotFound } from "../../components/admin/AdminPage";
 import AdminSection from "../../components/admin/AdminSection";
+import NavRow, { EmptyRow } from "../../components/admin/NavRow";
 import ConfirmDialog from "../../components/admin/ConfirmDialog";
 import RoundForm from "../../components/admin/RoundForm";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { useAdminTournament } from "../../contexts/AdminTournamentContext";
 import { useMatches } from "../../hooks/admin/useMatches";
 import { adminApi } from "../../api/admin";
 import { getErrorMessage } from "../../api/errors";
+import { formatRoundType } from "../../utils";
 import type { ComputeRoundRecapResult, RoundUpdates } from "../../api/adminContracts";
 import type { CourseDoc, MatchDoc } from "../../types";
 
 /**
- * One round in context: settings, its matches, recap generation, and deletion.
- * Route round/new renders the create form instead.
+ * One round in context. Ordered by what an admin actually does during an
+ * event: matches first (that's the day-of work), then the draft, the recap,
+ * and only then the round's own settings. Route round/new renders the create
+ * form instead.
  */
 export default function RoundAdmin() {
   const navigate = useNavigate();
   const { roundId = "" } = useParams<{ roundId: string }>();
   const isNew = roundId === "new";
-  const { tournamentId, rounds, loading: ctxLoading, refreshRounds } = useAdminTournament();
+  const { tournamentId, tournament, players, rounds, loading: ctxLoading, refreshRounds } = useAdminTournament();
   const round = rounds.find((r) => r.id === roundId);
 
   const [courses, setCourses] = useState<CourseDoc[]>([]);
@@ -36,6 +42,8 @@ export default function RoundAdmin() {
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // null = follow the round's state (open during setup, collapsed once matches exist).
+  const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null);
 
   const { matches, error: matchesError } = useMatches(isNew ? null : roundId);
 
@@ -45,6 +53,12 @@ export default function RoundAdmin() {
       .catch((err) => setError(getErrorMessage(err, "Failed to load courses")))
       .finally(() => setCoursesLoading(false));
   }, []);
+
+  const playerName = useMemo(() => {
+    const map: Record<string, string> = {};
+    players.forEach((p) => { map[p.id] = p.displayName ?? p.id; });
+    return map;
+  }, [players]);
 
   const handleSubmit = async (updates: RoundUpdates, newRoundId: string) => {
     setError(null);
@@ -104,155 +118,252 @@ export default function RoundAdmin() {
     }
   };
 
+  const tournamentLabel = tournament ? `${tournament.year} ${tournament.name}` : "Tournament";
+  const breadcrumbs = [
+    { label: "Admin", to: "/admin" },
+    { label: tournament?.name ?? "Tournament", to: `/admin/t/${tournamentId}` },
+    { label: isNew ? "New round" : `Day ${round?.day ?? "?"}` },
+  ];
+
   if (ctxLoading || coursesLoading) {
     return (
-      <Layout title={isNew ? "Create Round" : "Round Admin"} showBack>
-        <div className="p-4">Loading...</div>
-      </Layout>
+      <AdminPage title={isNew ? "New round" : "Round"} breadcrumbs={breadcrumbs} loading>
+        {null}
+      </AdminPage>
     );
   }
 
   if (!isNew && !round) {
     return (
-      <Layout title="Round Admin" showBack>
-        <div className="p-4 space-y-4">
-          <StatusBanner error="Round not found" />
-          <Link to={`/admin/t/${tournamentId}`} className="btn btn-secondary">Back to Tournament</Link>
-        </div>
-      </Layout>
+      <AdminNotFound
+        title="Round"
+        message="Round not found"
+        backTo={`/admin/t/${tournamentId}`}
+        backLabel="Back to tournament"
+        breadcrumbs={breadcrumbs}
+      />
     );
   }
 
-  const matchLabel = (m: MatchDoc) => {
-    const a = m.teamAPlayers?.map((p) => p.playerId).join("/") || "?";
-    const b = m.teamBPlayers?.map((p) => p.playerId).join("/") || "?";
-    return `Match ${m.matchNumber ?? m.id.slice(-4)} — ${a} vs ${b}`;
-  };
-
-  const title = isNew ? "Create Round" : `Day ${round!.day} — ${round!.format || "Format TBD"}`;
-
-  return (
-    <Layout title={title} showBack>
-      <div className="p-4 space-y-4 max-w-2xl mx-auto">
-        <StatusBanner error={error ?? matchesError} success={success} />
-
-        <AdminSection
-          title={isNew ? "New Round" : "Round Settings"}
-          description="Format, course, points, drive tracking, skins, and the round lock."
-        >
+  if (isNew) {
+    return (
+      <AdminPage
+        headerTitle={tournamentLabel}
+        breadcrumbs={breadcrumbs}
+        eyebrow={tournamentLabel}
+        title="New round"
+        description="One round per day of play. You can add its matches — or run the captains' draft — once it exists."
+        error={error}
+      >
+        <AdminSection title="Round settings" description="Format, course, points, drive tracking, and skins.">
           <RoundForm
-            key={isNew ? "new" : round!.id}
-            initial={isNew ? undefined : round}
+            key="new"
             defaultDay={rounds.length + 1}
             courses={courses}
-            showRoundIdInput={isNew}
+            showRoundIdInput
             submitting={submitting}
-            submitLabel={isNew ? "Create Round" : "Save Round"}
+            submitLabel="Create round"
             onSubmit={handleSubmit}
           />
         </AdminSection>
+      </AdminPage>
+    );
+  }
 
-        {!isNew && (
-          <>
-            <AdminSection
-              title="Pairings Draft"
-              description="Run the live captains' snake draft to set this round's matchups, then create the matches automatically."
-            >
-              <Link to={`/round/${roundId}/pairings`} className="btn btn-primary">
-                Open pairings draft
-              </Link>
-            </AdminSection>
+  const course = courses.find((c) => c.id === round!.courseId);
+  const showSettings = settingsOpen ?? matches.length === 0;
 
-            <AdminSection title="Matches" description="Open a match to edit players, lock it, fix a score, or delete it.">
-              <div className="space-y-2">
-                {matches.map((m) => (
-                  <Link
-                    key={m.id}
-                    to={`/admin/t/${tournamentId}/match/${m.id}`}
-                    className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-semibold">{matchLabel(m)}</div>
-                        <div className="text-xs text-gray-500 font-mono">{m.id}</div>
-                      </div>
-                      <div className="flex gap-1 text-xs items-center">
-                        {m.locked && <span className="px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded">🔒 locked</span>}
-                        {m.status?.closed ? (
-                          <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded">closed</span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">thru {m.status?.thru ?? 0}</span>
-                        )}
-                        <span className="text-xl ml-1">→</span>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-                {matches.length === 0 && <div className="text-sm text-gray-500">No matches yet.</div>}
-              </div>
-              <Link
-                to={`/admin/t/${tournamentId}/round/${roundId}/match/new`}
-                className="inline-block mt-4 text-sm text-blue-600 hover:underline"
-              >
-                + Add match
-              </Link>
-            </AdminSection>
+  const matchLabel = (m: MatchDoc) => {
+    const side = (list: MatchDoc["teamAPlayers"]) =>
+      (list ?? []).map((p) => playerName[p.playerId] ?? p.playerId).join(" & ") || "TBD";
+    return `${side(m.teamAPlayers)} vs ${side(m.teamBPlayers)}`;
+  };
 
-            <AdminSection
-              title="Round Recap"
-              description={'Compute the "vs All" simulation, leaders, and hole averages. All matches must be closed. Only one recap per round — delete the existing one in Firestore before regenerating.'}
-            >
-              {recapResult ? (
-                <div className="space-y-3">
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
-                    ✓ {recapResult.message} — {recapResult.stats.playersAnalyzed} players analyzed,
-                    birdie leader {recapResult.stats.birdiesGrossLeader} ({recapResult.stats.birdiesGrossCount}).
-                  </div>
-                  <Link to={`/round/${roundId}/recap`} className="btn btn-primary">View Recap</Link>
+  const matchStatus = (m: MatchDoc) => {
+    if (m.status?.closed) {
+      const winner = m.result?.winner;
+      const label =
+        winner === "AS" ? "halved" : winner === "teamA" ? tournament?.teamA?.name ?? "Team A" : winner === "teamB" ? tournament?.teamB?.name ?? "Team B" : "final";
+      return <Badge variant="success">{label}</Badge>;
+    }
+    const thru = m.status?.thru ?? 0;
+    return thru > 0 ? <Badge variant="info">thru {thru}</Badge> : <Badge variant="muted">not started</Badge>;
+  };
+
+  return (
+    <AdminPage
+      headerTitle={tournamentLabel}
+      breadcrumbs={breadcrumbs}
+      eyebrow={tournamentLabel}
+      title={`Day ${round!.day} — ${formatRoundType(round!.format)}`}
+      description={course ? `${course.name}${course.tees ? ` · ${course.tees} tees` : ""} · par ${course.par ?? "?"}` : "No course assigned yet."}
+      badges={
+        <>
+          {round!.locked ? (
+            <Badge variant="muted"><Lock className="mr-1 h-3 w-3" />locked</Badge>
+          ) : (
+            <Badge variant="success">open for scoring</Badge>
+          )}
+          <Badge variant="outline">{round!.pointsValue ?? 1} pt per match</Badge>
+          {round!.trackDrives && <Badge variant="outline">drives tracked</Badge>}
+        </>
+      }
+      error={error ?? matchesError}
+      success={success}
+      actions={
+        <Button asChild variant="outline" size="sm">
+          <Link to={`/round/${roundId}`}>
+            <ExternalLink className="h-4 w-4" />
+            View
+          </Link>
+        </Button>
+      }
+    >
+      <AdminSection
+        title="Matches"
+        description="Open a match to edit players, lock it, or fix a score."
+        actions={
+          <Button asChild variant="ghost" size="sm">
+            <Link to={`/admin/t/${tournamentId}/round/${roundId}/match/new`}>
+              <Plus className="h-4 w-4" />
+              Match
+            </Link>
+          </Button>
+        }
+      >
+        <div className="space-y-2">
+          {matches.map((m) => (
+            <NavRow
+              key={m.id}
+              to={`/admin/t/${tournamentId}/match/${m.id}`}
+              leading={
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-bold text-foreground">
+                  {m.matchNumber ?? "–"}
                 </div>
-              ) : (
-                <button type="button" onClick={handleGenerateRecap} disabled={recapBusy} className="btn btn-primary">
-                  {recapBusy ? "Generating..." : "Generate Recap"}
-                </button>
-              )}
-            </AdminSection>
-
-            <AdminSection
-              title="Delete Round"
-              description="Removes the round, all its matches, their stats, skins results, and any recap. Stats recompute automatically."
-              danger
-            >
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                disabled={deleting}
-                className="btn bg-red-600 text-white"
-              >
-                Delete Round
-              </button>
-            </AdminSection>
-
-            <ConfirmDialog
-              isOpen={confirmDelete}
-              title="Delete round?"
-              confirmLabel="Delete Round"
-              danger
-              busy={deleting}
-              onConfirm={handleDelete}
-              onCancel={() => setConfirmDelete(false)}
-            >
-              {matches.length > 0 ? (
+              }
+              title={matchLabel(m)}
+              subtitle={m.id}
+              badges={
                 <>
-                  This round has <strong>{matches.length} match{matches.length === 1 ? "" : "es"}</strong>.
-                  Deleting it permanently removes them, their player stats, skins results, and any recap.
+                  {m.locked && <Badge variant="muted"><Lock className="h-3 w-3" /></Badge>}
+                  {matchStatus(m)}
                 </>
-              ) : (
-                <>This round has no matches. It will be permanently deleted.</>
-              )}
-            </ConfirmDialog>
-          </>
+              }
+            />
+          ))}
+          {matches.length === 0 && (
+            <EmptyRow>
+              No matches yet — run the pairings draft below, or add them by hand.
+            </EmptyRow>
+          )}
+        </div>
+      </AdminSection>
+
+      <AdminSection
+        title="Pairings draft"
+        description="Run the live captains' snake draft to set this round's matchups, then create the matches automatically."
+      >
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant={matches.length === 0 ? "default" : "outline"}>
+            <Link to={`/round/${roundId}/pairings`}>
+              <Users className="h-4 w-4" />
+              Open pairings draft
+            </Link>
+          </Button>
+        </div>
+      </AdminSection>
+
+      <AdminSection
+        title="Round recap"
+        description={'The "vs All" simulation, scoring leaders, and hole averages. Every match must be closed first. Only one recap per round — delete the existing one in Firestore before regenerating.'}
+      >
+        {recapResult ? (
+          <div className="space-y-3">
+            <p className="text-sm text-emerald-700">
+              ✓ {recapResult.message} — {recapResult.stats.playersAnalyzed} players analyzed, birdie leader{" "}
+              {recapResult.stats.birdiesGrossLeader} ({recapResult.stats.birdiesGrossCount}).
+            </p>
+            <Button asChild>
+              <Link to={`/round/${roundId}/recap`}>View recap</Link>
+            </Button>
+          </div>
+        ) : (
+          <Button type="button" onClick={handleGenerateRecap} disabled={recapBusy}>
+            {recapBusy ? "Generating…" : "Generate recap"}
+          </Button>
         )}
-      </div>
-    </Layout>
+      </AdminSection>
+
+      <AdminSection
+        title="Round settings"
+        description="Format, course, points, drive tracking, skins, and the round lock."
+        actions={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setSettingsOpen(!showSettings)}
+            aria-expanded={showSettings}
+          >
+            {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {showSettings ? "Hide" : "Edit"}
+          </Button>
+        }
+      >
+        {showSettings ? (
+          <RoundForm
+            key={round!.id}
+            initial={round}
+            defaultDay={rounds.length + 1}
+            courses={courses}
+            submitting={submitting}
+            submitLabel="Save round"
+            onSubmit={handleSubmit}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {formatRoundType(round!.format)} · {course?.name ?? "no course"} · {round!.pointsValue ?? 1} pt per match
+            {(round!.skinsGrossPot ?? 0) > 0 || (round!.skinsNetPot ?? 0) > 0
+              ? ` · skins $${round!.skinsGrossPot ?? 0} gross / $${round!.skinsNetPot ?? 0} net`
+              : ""}
+          </p>
+        )}
+      </AdminSection>
+
+      <AdminSection
+        title="Delete round"
+        description="Removes the round, all its matches, their stats, skins results, and any recap. Stats recompute automatically."
+        danger
+      >
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setConfirmDelete(true)}
+          disabled={deleting}
+          className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+        >
+          Delete round
+        </Button>
+      </AdminSection>
+
+      <ConfirmDialog
+        isOpen={confirmDelete}
+        title="Delete round?"
+        confirmLabel="Delete round"
+        danger
+        busy={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      >
+        {matches.length > 0 ? (
+          <>
+            This round has <strong>{matches.length} match{matches.length === 1 ? "" : "es"}</strong>.
+            Deleting it permanently removes them, their player stats, skins results, and any recap.
+          </>
+        ) : (
+          <>This round has no matches. It will be permanently deleted.</>
+        )}
+      </ConfirmDialog>
+    </AdminPage>
   );
 }

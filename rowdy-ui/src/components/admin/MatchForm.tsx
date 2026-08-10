@@ -1,4 +1,9 @@
 import { useMemo, useState } from "react";
+import { Plus, X } from "lucide-react";
+import { Button } from "../ui/button";
+import { Field, FieldGroup } from "./fields";
+import { inputClass, monoInputClass } from "./inputStyles";
+import { cn } from "../../lib/utils";
 import type { MatchDoc, PlayerDoc, TournamentDoc } from "../../types";
 import { tierPlayerIds } from "../../utils/roster";
 import { storedToLocalInput } from "../../utils/teeTime";
@@ -34,8 +39,7 @@ interface MatchFormProps {
 
 /**
  * Shared match create/edit form: match id, tee time, and per-team player
- * pickers restricted to the tournament roster. Merges the former
- * AddMatch/EditMatch form bodies.
+ * pickers restricted to the tournament roster.
  */
 export default function MatchForm({
   tournament,
@@ -84,16 +88,22 @@ export default function MatchForm({
   ) => {
     const team = tournament[teamKey];
     const fallbackColor = teamKey === "teamA" ? "var(--team-a-default)" : "var(--team-b-default)";
+    const teamName = team?.name || (teamKey === "teamA" ? "Team A" : "Team B");
     return (
-      <div className="card p-6 space-y-4">
-        <h3 className="font-bold text-lg" style={{ color: team?.color || fallbackColor }}>
-          {team?.name || (teamKey === "teamA" ? "Team A" : "Team B")} Players
-        </h3>
-
+      <FieldGroup
+        title={
+          <span className="flex items-center gap-2">
+            <span
+              className="h-3 w-3 rounded-full border border-border"
+              style={{ background: team?.color || fallbackColor }}
+            />
+            {teamName}
+          </span>
+        }
+      >
         {list.map((playerInput, idx) => (
-          <div key={idx} className="flex gap-3 items-end">
-            <div className="flex-1">
-              <label className="block text-sm font-semibold mb-2">Player {idx + 1}</label>
+          <div key={idx} className="flex items-end gap-2">
+            <Field label={`Player ${idx + 1}`} className="flex-1">
               <select
                 value={playerInput.playerId}
                 onChange={(e) => {
@@ -101,21 +111,28 @@ export default function MatchForm({
                   updated[idx] = { ...updated[idx], playerId: e.target.value };
                   setList(updated);
                 }}
-                className="w-full p-3 border border-gray-300 rounded-lg"
+                className={inputClass}
                 required
               >
-                <option value="">Select Player</option>
+                <option value="">Select player</option>
                 {available.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.displayName || p.id}
                   </option>
                 ))}
               </select>
-            </div>
+            </Field>
 
             {showHandicapOverride && (
-              <div className="w-32">
-                <label className="block text-sm font-semibold mb-2">Handicap Index</label>
+              <Field
+                label="Hcp index"
+                className="w-24 shrink-0"
+                hint={
+                  playerInput.courseHandicap !== undefined
+                    ? `course ${playerInput.courseHandicap}`
+                    : undefined
+                }
+              >
                 <input
                   type="number"
                   step="0.1"
@@ -125,76 +142,73 @@ export default function MatchForm({
                     updated[idx] = { ...updated[idx], handicapIndex: parseFloat(e.target.value) || 0 };
                     setList(updated);
                   }}
-                  className="w-full p-3 border border-gray-300 rounded-lg"
+                  className={cn(inputClass, "px-2")}
                   required
                 />
-                {playerInput.courseHandicap !== undefined && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    Current course handicap: {playerInput.courseHandicap}
-                  </div>
-                )}
-              </div>
+              </Field>
             )}
 
             {idx > 0 && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 onClick={() => setList(list.filter((_, i) => i !== idx))}
-                className="p-3 text-red-600 hover:bg-red-50 rounded-lg"
+                aria-label={`Remove player ${idx + 1}`}
+                className="text-muted-foreground hover:text-destructive"
               >
-                ✕
-              </button>
+                <X className="h-4 w-4" />
+              </Button>
             )}
           </div>
         ))}
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setList([...list, showHandicapOverride ? { playerId: "", handicapIndex: 0 } : { playerId: "" }])}
-          className="text-sm text-blue-600 hover:underline"
         >
-          + Add another {team?.name || (teamKey === "teamA" ? "Team A" : "Team B")} player
-        </button>
-      </div>
+          <Plus className="h-4 w-4" />
+          Add {teamName} player
+        </Button>
+      </FieldGroup>
     );
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="card p-6 space-y-4">
-        <h3 className="font-bold text-lg">Match Details</h3>
-
-        <div>
-          <label className="block text-sm font-semibold mb-2">Match ID</label>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field
+          label="Match ID"
+          hint={isEdit ? "Fixed once a match exists." : "e.g. rowdyCup2026-R01M01-twoManBestBall"}
+        >
           <input
             type="text"
             value={matchId}
             onChange={(e) => setMatchId(e.target.value)}
-            placeholder="e.g., rowdyCup2025-R01M01-twoManBestBall"
-            className={`w-full p-3 border border-gray-300 rounded-lg ${isEdit ? "bg-gray-50" : ""}`}
+            placeholder="rowdyCup2026-R01M01-twoManBestBall"
+            className={monoInputClass}
             readOnly={isEdit}
             required
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold mb-2">Tee Time</label>
+        </Field>
+        <Field label="Tee time" optional hint="Venue-local wall clock.">
           <input
             type="datetime-local"
             value={teeTime}
             onChange={(e) => setTeeTime(e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-lg"
+            className={inputClass}
           />
-          <div className="text-xs text-gray-500 mt-1">Optional — interpreted as Pacific Time</div>
-        </div>
+        </Field>
       </div>
 
       {renderTeam("teamA", teamAPlayers, setTeamAPlayers, teamAAvailablePlayers)}
       {renderTeam("teamB", teamBPlayers, setTeamBPlayers, teamBAvailablePlayers)}
 
-      <button type="submit" disabled={submitting || !matchId} className="btn btn-primary w-full">
-        {submitting ? "Saving..." : submitLabel}
-      </button>
+      <Button type="submit" disabled={submitting || !matchId} className="w-full">
+        {submitting ? "Saving…" : submitLabel}
+      </Button>
     </form>
   );
 }

@@ -1,20 +1,34 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import Layout from "../../components/Layout";
-import StatusBanner from "../../components/admin/StatusBanner";
+import { ExternalLink, Flag, Lock, Plus, Users, Wrench } from "lucide-react";
+import AdminPage from "../../components/admin/AdminPage";
 import AdminSection from "../../components/admin/AdminSection";
+import NavRow, { EmptyRow } from "../../components/admin/NavRow";
+import TournamentBadges from "../../components/admin/TournamentBadges";
+import { Field, ToggleRow } from "../../components/admin/fields";
+import { inputClass, monoInputClass } from "../../components/admin/inputStyles";
+import { Modal } from "../../components/Modal";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { useAdminTournaments } from "../../hooks/admin/useAdminTournaments";
+import { useRounds } from "../../hooks/admin/useRounds";
 import { adminApi } from "../../api/admin";
 import { getErrorMessage } from "../../api/errors";
+import { formatRoundType } from "../../utils";
 
 /**
- * Admin home: pick a tournament to manage (everything tournament-scoped lives
- * under /admin/t/:id), create a new one, or jump to the global areas.
+ * Admin home. Leads with the active tournament and its rounds — the day-of
+ * path (open a round, lock it, fix a score) is the one that matters most, so it
+ * starts here instead of behind a tournament picker.
  */
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [includeArchived, setIncludeArchived] = useState(false);
   const { tournaments, loading, error: loadError, refresh } = useAdminTournaments({ includeArchived });
+
+  const activeTournament = tournaments.find((t) => t.active) ?? null;
+  const { rounds, loading: roundsLoading } = useRounds(activeTournament?.id);
+  const otherTournaments = tournaments.filter((t) => t.id !== activeTournament?.id);
 
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -24,8 +38,6 @@ export default function AdminDashboard() {
   const [newYear, setNewYear] = useState(String(new Date().getFullYear()));
   const [newSeries, setNewSeries] = useState("rowdyCup");
   const [newTest, setNewTest] = useState(false);
-
-  const activeTournament = tournaments.find((t) => t.active);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +52,7 @@ export default function AdminDashboard() {
         test: newTest,
       });
       await refresh();
+      setShowCreate(false);
       navigate(`/admin/t/${res.tournamentId}`);
     } catch (err) {
       console.error("Error creating tournament:", err);
@@ -48,172 +61,204 @@ export default function AdminDashboard() {
     }
   };
 
-  if (loading) {
-    return (
-      <Layout title="Admin" showBack>
-        <div className="p-4">Loading...</div>
-      </Layout>
-    );
-  }
-
   return (
-    <Layout title="Admin Dashboard" showBack>
-      <div className="p-4 space-y-4 max-w-2xl mx-auto">
-        <StatusBanner error={error ?? loadError} />
-
+    <AdminPage
+      title="Admin"
+      description="Manage tournaments, rounds, matches, players, and courses."
+      error={error ?? loadError}
+      loading={loading}
+      actions={
+        <Button type="button" variant="outline" size="sm" onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4" />
+          New tournament
+        </Button>
+      }
+    >
+      {activeTournament ? (
         <AdminSection
-          title="Tournaments"
-          description="Pick a tournament to manage its settings, rounds, and matches."
+          title={`${activeTournament.year} ${activeTournament.name}`}
+          description="The live tournament. Open a round to manage its matches, lock score entry, or run the pairings draft."
+          actions={<Badge variant="success">active</Badge>}
         >
-          {activeTournament && (
-            <Link
-              to={`/admin/t/${activeTournament.id}`}
-              className="block p-4 mb-3 border-2 border-green-300 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-lg">{activeTournament.name}</div>
-                  <div className="text-sm text-gray-600">Active tournament — jump straight in</div>
-                </div>
-                <div className="text-2xl">→</div>
-              </div>
-            </Link>
-          )}
-
           <div className="space-y-2">
-            {tournaments.map((t) => (
-              <Link
-                key={t.id}
-                to={`/admin/t/${t.id}`}
-                className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold">{t.year} {t.name}</div>
-                    <div className="text-sm text-gray-600">{t.series}</div>
-                  </div>
-                  <div className="flex gap-1 text-xs items-center">
-                    {t.active && <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded">active</span>}
-                    {t.test && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">test</span>}
-                    {t.archived && <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded">archived</span>}
-                    <span className="text-xl ml-1">→</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
-            {tournaments.length === 0 && (
-              <div className="text-sm text-gray-500">No tournaments found.</div>
+            {roundsLoading && rounds.length === 0 && (
+              <div className="h-12 animate-pulse rounded-xl bg-muted/60" aria-hidden="true" />
             )}
+            {rounds.map((r) => (
+              <NavRow
+                key={r.id}
+                to={`/admin/t/${activeTournament.id}/round/${r.id}`}
+                leading={
+                  <div className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-lg bg-muted text-center">
+                    <span className="text-[0.5rem] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Day
+                    </span>
+                    <span className="text-xs font-bold leading-none text-foreground">{r.day ?? "?"}</span>
+                  </div>
+                }
+                title={formatRoundType(r.format)}
+                subtitle={`${r.matchIds?.length ?? 0} match${(r.matchIds?.length ?? 0) === 1 ? "" : "es"} · ${r.pointsValue ?? 1} pt each`}
+                badges={
+                  r.locked ? (
+                    <Badge variant="muted" className="gap-1">
+                      <Lock className="h-3 w-3" />
+                      locked
+                    </Badge>
+                  ) : null
+                }
+              />
+            ))}
+            {!roundsLoading && rounds.length === 0 && <EmptyRow>No rounds yet.</EmptyRow>}
           </div>
 
-          <label className="flex items-center gap-2 text-sm mt-4 text-gray-600">
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button asChild size="sm">
+              <Link to={`/admin/t/${activeTournament.id}`}>Manage tournament</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/admin/t/${activeTournament.id}/settings`}>Rosters &amp; settings</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link to={`/tournament/${activeTournament.id}`}>
+                <ExternalLink className="h-4 w-4" />
+                Public page
+              </Link>
+            </Button>
+          </div>
+        </AdminSection>
+      ) : (
+        <AdminSection
+          title="No active tournament"
+          description="Nothing is flagged active right now. Open a tournament below and flip Active in its settings, or create a new one."
+        >
+          <Button type="button" onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" />
+            New tournament
+          </Button>
+        </AdminSection>
+      )}
+
+      <AdminSection
+        title="All tournaments"
+        description="Past events, tests, and anything not currently active."
+        actions={
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <input
               type="checkbox"
               checked={includeArchived}
               onChange={(e) => setIncludeArchived(e.target.checked)}
+              className="h-4 w-4 accent-[var(--brand-primary)]"
             />
-            Show archived tournaments
+            Archived
           </label>
+        }
+      >
+        <div className="space-y-2">
+          {otherTournaments.map((t) => (
+            <NavRow
+              key={t.id}
+              to={`/admin/t/${t.id}`}
+              title={`${t.year} ${t.name}`}
+              subtitle={t.series}
+              badges={<TournamentBadges tournament={t} />}
+            />
+          ))}
+          {otherTournaments.length === 0 && <EmptyRow>No other tournaments.</EmptyRow>}
+        </div>
+      </AdminSection>
 
-          <div className="mt-4 border-t border-gray-200 pt-4">
-            {!showCreate ? (
-              <button type="button" onClick={() => setShowCreate(true)} className="text-sm text-blue-600 hover:underline">
-                + Create new tournament
-              </button>
-            ) : (
-              <form onSubmit={handleCreate} className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Name (e.g. Rowdy Cup 2026)"
-                    className="p-2 border border-gray-300 rounded-lg"
-                    required
-                  />
-                  <input
-                    type="number"
-                    value={newYear}
-                    onChange={(e) => setNewYear(e.target.value)}
-                    placeholder="Year"
-                    className="p-2 border border-gray-300 rounded-lg"
-                    required
-                  />
-                  <input
-                    type="text"
-                    value={newSeries}
-                    onChange={(e) => setNewSeries(e.target.value)}
-                    placeholder="Series (e.g. rowdyCup)"
-                    className="p-2 border border-gray-300 rounded-lg"
-                    required
-                  />
-                  <input
-                    type="text"
-                    value={newId}
-                    onChange={(e) => setNewId(e.target.value)}
-                    placeholder="ID (optional)"
-                    className="p-2 border border-gray-300 rounded-lg font-mono text-sm"
-                  />
-                </div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={newTest} onChange={(e) => setNewTest(e.target.checked)} />
-                  <span className="font-semibold">Test tournament</span>
-                  <span className="text-gray-500">(only visible to admins)</span>
-                </label>
-                <div className="text-xs text-gray-500">
-                  Created inactive — set rosters and rounds first, then flip Active in Settings.
-                </div>
-                <div className="flex gap-3">
-                  <button type="submit" disabled={creating} className="btn btn-primary flex-1">
-                    {creating ? "Creating..." : "Create Tournament"}
-                  </button>
-                  <button type="button" onClick={() => setShowCreate(false)} className="btn btn-secondary">
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </AdminSection>
+      <AdminSection title="Library" description="Data shared across every tournament.">
+        <div className="space-y-2">
+          <NavRow
+            to="/admin/players"
+            leading={<Users className="h-5 w-5 text-muted-foreground" />}
+            title="Players"
+            subtitle="Add, rename, link logins, admin access, delete"
+          />
+          <NavRow
+            to="/admin/courses"
+            leading={<Flag className="h-5 w-5 text-muted-foreground" />}
+            title="Courses"
+            subtitle="Pars, handicap indexes, and yardages"
+          />
+          <NavRow
+            to="/admin/recalculate"
+            leading={<Wrench className="h-5 w-5 text-muted-foreground" />}
+            title="Recalculate all stats"
+            subtitle="Rebuild every playerMatchFact and stat, across all tournaments"
+            badges={<Badge variant="warning">heavy</Badge>}
+          />
+        </div>
+      </AdminSection>
 
-        <AdminSection title="Global" description="Areas that span all tournaments.">
-          <div className="space-y-3">
-            <Link to="/admin/players" className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-lg">Players</div>
-                  <div className="text-sm text-gray-600">Add, rename, link logins, admin access, delete</div>
-                </div>
-                <div className="text-2xl">→</div>
-              </div>
-            </Link>
-            <Link to="/admin/courses" className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-lg">Courses</div>
-                  <div className="text-sm text-gray-600">Create and edit courses (pars, handicaps, yardages)</div>
-                </div>
-                <div className="text-2xl">→</div>
-              </div>
-            </Link>
-            <Link
-              to="/admin/recalculate"
-              className="block p-4 border-2 border-red-300 rounded-lg hover:bg-red-50 transition-colors bg-red-50"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-lg flex items-center gap-2">
-                    <span>🔥</span>
-                    <span>Recalculate All Stats (Global)</span>
-                  </div>
-                  <div className="text-sm text-gray-600">Regenerate all playerMatchFacts and stats across ALL tournaments</div>
-                </div>
-                <div className="text-2xl">→</div>
-              </div>
-            </Link>
+      <Modal
+        key="create-tournament"
+        isOpen={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="New tournament"
+        maxWidth="max-w-md"
+      >
+        <form onSubmit={handleCreate} className="space-y-3 text-left">
+          <Field label="Name">
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Rowdy Cup 2027"
+              className={inputClass}
+              required
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Year">
+              <input
+                type="number"
+                value={newYear}
+                onChange={(e) => setNewYear(e.target.value)}
+                className={inputClass}
+                required
+              />
+            </Field>
+            <Field label="Series">
+              <select
+                value={newSeries}
+                onChange={(e) => setNewSeries(e.target.value)}
+                className={inputClass}
+                required
+              >
+                <option value="rowdyCup">Rowdy Cup</option>
+                <option value="christmasClassic">Christmas Classic</option>
+              </select>
+            </Field>
           </div>
-        </AdminSection>
-      </div>
-    </Layout>
+          <Field label="ID" optional hint="Auto-generated when blank.">
+            <input
+              type="text"
+              value={newId}
+              onChange={(e) => setNewId(e.target.value)}
+              placeholder="e.g. 2027RowdyCup"
+              className={monoInputClass}
+            />
+          </Field>
+          <ToggleRow
+            label="Test tournament"
+            description="Only visible to admins."
+            checked={newTest}
+            onChange={setNewTest}
+          />
+          <p className="text-xs text-muted-foreground">
+            Created inactive — set rosters and rounds first, then flip Active in Settings.
+          </p>
+          <div className="flex gap-2 pt-1">
+            <Button type="submit" disabled={creating} className="flex-1">
+              {creating ? "Creating…" : "Create tournament"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </AdminPage>
   );
 }

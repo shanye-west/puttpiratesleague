@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import Layout from "../components/Layout";
+import { Loader2 } from "lucide-react";
+import AdminPage from "../components/admin/AdminPage";
+import AdminSection from "../components/admin/AdminSection";
+import { Button } from "../components/ui/button";
 import { useAuth } from "../contexts/AuthContext";
 import { adminApi } from "../api/admin";
 import { getErrorMessage } from "../api/errors";
@@ -9,6 +12,11 @@ import type {
   RecalculateAllStatsExecuteResult as ExecuteResult,
 } from "../api/adminContracts";
 
+/**
+ * The "nuclear" stats rebuild: delete every playerMatchFact and regenerate from
+ * all closed matches. Runs as a preview → confirm → execute wizard so the
+ * destructive step is never one tap away.
+ */
 export default function RecalculateTournamentStats() {
   const { player } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -17,17 +25,14 @@ export default function RecalculateTournamentStats() {
   const [executeResult, setExecuteResult] = useState<ExecuteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Access control: only admins can view this page
+  // Belt-and-braces: the route already sits behind RequireAdmin.
   if (!player?.isAdmin) {
     return (
-      <Layout title="Recalculate Tournament Stats" showBack>
-        <div className="empty-state">
-          <div className="empty-state-icon">🔒</div>
-          <div className="empty-state-text">Access Denied</div>
-          <div className="text-sm text-gray-500 mt-2">Admin access required</div>
-          <Link to="/" className="btn btn-primary mt-4">Go Home</Link>
-        </div>
-      </Layout>
+      <AdminPage title="Recalculate all stats" error="Admin access required">
+        <Button asChild variant="outline">
+          <Link to="/">Go home</Link>
+        </Button>
+      </AdminPage>
     );
   }
 
@@ -73,217 +78,161 @@ export default function RecalculateTournamentStats() {
   };
 
   return (
-    <Layout title="Recalculate All Stats" showBack>
-      <div className="p-4 space-y-4 max-w-3xl mx-auto">
-        {/* Warning Banner */}
-        <div className="card p-4 bg-red-50 border-2 border-red-300">
-          <div className="flex items-start gap-3">
-            <div className="text-3xl">🔥</div>
-            <div>
-              <div className="font-bold text-red-900 mb-2 text-lg">CRITICAL: Global Recalculation</div>
-              <div className="text-sm text-red-800 space-y-2">
-                <p className="font-semibold">This will recalculate ALL tournaments:</p>
-                <ul className="list-disc ml-4 mt-1 space-y-1">
-                  <li>Delete ALL playerMatchFacts across ALL tournaments</li>
-                  <li>playerStats automatically cleaned up via triggers</li>
-                  <li>Regenerate facts from ALL closed matches</li>
-                  <li>Rebuild all stats from fresh data</li>
-                </ul>
-                <p className="mt-3 font-bold bg-red-100 p-2 rounded">⚠️ This is a "nuclear" reset of all statistical data</p>
-                <p className="text-xs mt-2">Use this when you need to ensure complete data integrity across everything.</p>
-              </div>
-            </div>
+    <AdminPage
+      title="Recalculate all stats"
+      breadcrumbs={[{ label: "Admin", to: "/admin" }, { label: "Tools" }]}
+      description="Rebuilds every playerMatchFact and player stat, across every tournament."
+      error={error}
+      wide
+    >
+      <AdminSection title="What this does" danger>
+        <ul className="ml-4 list-disc space-y-1 text-sm text-muted-foreground">
+          <li>Deletes <strong className="text-foreground">all</strong> playerMatchFacts, in every tournament</li>
+          <li>playerStats are cleaned up automatically by triggers</li>
+          <li>Regenerates facts from every closed match</li>
+          <li>Rebuilds all stats from the fresh facts</li>
+        </ul>
+        <p className="mt-3 text-sm text-destructive">
+          A full reset of the statistical data. Use it when you need to guarantee integrity across
+          everything — not as a routine fix.
+        </p>
+      </AdminSection>
+
+      {step === "preview" && !dryRunResult && (
+        <AdminSection
+          title="Preview first"
+          description="A dry run reports exactly what would change, without writing anything."
+        >
+          <div className="flex gap-2">
+            <Button type="button" onClick={handleDryRun} disabled={loading} className="flex-1">
+              {loading ? "Loading preview…" : "Preview changes"}
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/admin">Cancel</Link>
+            </Button>
           </div>
+        </AdminSection>
+      )}
+
+      {step === "preview" && dryRunResult && (
+        <AdminSection title="Preview results" description={dryRunResult.message}>
+          <StatRows
+            rows={[
+              { label: "Facts to delete", value: dryRunResult.factsToDelete, tone: "danger" },
+              { label: "Players affected", value: dryRunResult.affectedPlayers },
+              { label: "Tournaments affected", value: dryRunResult.tournamentsAffected },
+              { label: "Matches to regenerate", value: dryRunResult.matchesToRecalculate, tone: "good" },
+            ]}
+          />
+          <div className="mt-4 flex gap-2">
+            <Button type="button" onClick={() => setStep("confirm")} className="flex-1">
+              Continue
+            </Button>
+            <Button type="button" variant="outline" onClick={handleReset}>
+              Cancel
+            </Button>
+          </div>
+        </AdminSection>
+      )}
+
+      {step === "confirm" && dryRunResult && (
+        <AdminSection title="Final confirmation" danger>
+          <div className="space-y-2 text-sm">
+            <p className="font-semibold text-destructive">You are about to permanently:</p>
+            <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+              <li>Delete {dryRunResult.factsToDelete} playerMatchFacts</li>
+              <li>
+                Affect {dryRunResult.affectedPlayers} players across {dryRunResult.tournamentsAffected}{" "}
+                tournaments
+              </li>
+              <li>Trigger regeneration for {dryRunResult.matchesToRecalculate} matches</li>
+            </ul>
+            <p className="text-muted-foreground">
+              playerStats are cleaned up and rebuilt by triggers. This cannot be undone.
+            </p>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleExecute}
+              disabled={loading}
+              className="flex-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              {loading ? "Executing…" : "Execute global recalculation"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={handleReset} disabled={loading}>
+              Cancel
+            </Button>
+          </div>
+        </AdminSection>
+      )}
+
+      {step === "executing" && (
+        <AdminSection title="Working…">
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <span>
+              Deleting all facts across all tournaments and triggering regeneration. This may take a
+              few moments.
+            </span>
+          </div>
+        </AdminSection>
+      )}
+
+      {step === "complete" && executeResult && (
+        <AdminSection title="Recalculation complete" description={executeResult.message}>
+          <StatRows
+            rows={[
+              { label: "Facts deleted", value: executeResult.factsDeleted, tone: "good" },
+              { label: "Players auto-cleaned", value: executeResult.statsAutoCleanedUp, tone: "good" },
+              { label: "Tournaments recalculated", value: executeResult.tournamentsRecalculated, tone: "good" },
+              { label: "Matches regenerated", value: executeResult.matchesRecalculated, tone: "good" },
+            ]}
+          />
+          <p className="mt-3 text-xs text-muted-foreground">
+            Player stats are being rebuilt in real time by triggers.
+          </p>
+          <div className="mt-4 flex gap-2">
+            <Button type="button" onClick={handleReset} className="flex-1">
+              Run again
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/admin">Back to Admin</Link>
+            </Button>
+          </div>
+        </AdminSection>
+      )}
+    </AdminPage>
+  );
+}
+
+function StatRows({
+  rows,
+}: {
+  rows: { label: string; value: number; tone?: "danger" | "good" }[];
+}) {
+  return (
+    <div className="space-y-2">
+      {rows.map((row) => (
+        <div
+          key={row.label}
+          className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 text-sm"
+        >
+          <span className="text-muted-foreground">{row.label}</span>
+          <span
+            className={
+              row.tone === "danger"
+                ? "font-bold text-destructive"
+                : row.tone === "good"
+                  ? "font-bold text-emerald-600"
+                  : "font-bold text-foreground"
+            }
+          >
+            {row.value}
+          </span>
         </div>
-
-        {/* Initial Preview Button */}
-        {step === "preview" && !dryRunResult && (
-          <div className="card p-6">
-            <h2 className="text-xl font-bold mb-4">Ready to Preview</h2>
-            
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-800 p-3 rounded-lg mb-4">
-                {error}
-              </div>
-            )}
-
-            <p className="text-gray-700 mb-6">
-              Click below to run a dry-run preview. This will show you exactly what will happen 
-              without making any changes.
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleDryRun}
-                disabled={loading}
-                className="btn btn-primary flex-1"
-              >
-                {loading ? "Loading Preview..." : "Preview Changes"}
-              </button>
-              <Link to="/admin" className="btn btn-secondary">
-                Cancel
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {/* Dry Run Results */}
-        {step === "preview" && dryRunResult && (
-          <div className="space-y-4">
-            <div className="card p-6">
-              <h2 className="text-xl font-bold mb-4">Preview Results</h2>
-              
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-800 p-3 rounded-lg mb-4">
-                  {error}
-                </div>
-              )}
-
-              <div className="space-y-3 mb-6">
-                <div className="flex justify-between p-3 bg-red-50 rounded">
-                  <span className="font-medium">Facts to Delete:</span>
-                  <span className="font-bold text-red-700">{dryRunResult.factsToDelete}</span>
-                </div>
-                <div className="flex justify-between p-3 bg-orange-50 rounded">
-                  <span className="font-medium">Players Affected:</span>
-                  <span className="font-bold text-orange-700">{dryRunResult.affectedPlayers}</span>
-                </div>
-                <div className="flex justify-between p-3 bg-orange-50 rounded">
-                  <span className="font-medium">Tournaments Affected:</span>
-                  <span className="font-bold text-orange-700">{dryRunResult.tournamentsAffected}</span>
-                </div>
-                <div className="flex justify-between p-3 bg-green-50 rounded">
-                  <span className="font-medium">Matches to Regenerate:</span>
-                  <span className="font-bold text-green-700">{dryRunResult.matchesToRecalculate}</span>
-                </div>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6">
-                <div className="text-sm text-blue-900">
-                  <strong>What will happen:</strong>
-                  <p className="mt-2">{dryRunResult.message}</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setStep("confirm")}
-                  className="btn btn-primary flex-1"
-                >
-                  Continue to Confirmation
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="btn btn-secondary"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Final Confirmation */}
-        {step === "confirm" && dryRunResult && (
-          <div className="card p-6">
-            <h2 className="text-xl font-bold mb-4 text-red-700">🔥 FINAL CONFIRMATION</h2>
-            
-            <div className="bg-red-50 border-2 border-red-300 p-4 rounded-lg mb-6">
-              <div className="text-red-900 space-y-2">
-                <p className="font-bold text-lg">You are about to PERMANENTLY:</p>
-                <ul className="list-disc ml-6 space-y-1">
-                  <li>Delete {dryRunResult.factsToDelete} playerMatchFacts</li>
-                  <li>Affect {dryRunResult.affectedPlayers} players across {dryRunResult.tournamentsAffected} tournaments</li>
-                  <li>Trigger regeneration for {dryRunResult.matchesToRecalculate} matches</li>
-                </ul>
-                <p className="mt-4 font-bold text-xl bg-red-200 p-3 rounded">⚠️ ALL TOURNAMENTS WILL BE RECALCULATED</p>
-                <p className="text-sm mt-2">playerStats will be automatically cleaned up and rebuilt by triggers.</p>
-                <p className="mt-3 font-bold">This action cannot be undone.</p>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleExecute}
-                disabled={loading}
-                className="btn bg-red-600 hover:bg-red-700 text-white flex-1"
-              >
-                {loading ? "Executing..." : "Execute Global Recalculation"}
-              </button>
-              <button
-                onClick={handleReset}
-                disabled={loading}
-                className="btn btn-secondary"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Executing */}
-        {step === "executing" && (
-          <div className="card p-6 text-center">
-            <div className="text-4xl mb-4">⏳</div>
-            <h2 className="text-xl font-bold mb-2">Processing Global Recalculation...</h2>
-            <p className="text-gray-600">
-              Deleting all facts across all tournaments and triggering regeneration.
-            </p>
-            <p className="text-sm text-gray-500 mt-2">This may take a few moments.</p>
-          </div>
-        )}
-
-        {/* Complete */}
-        {step === "complete" && executeResult && (
-          <div className="space-y-4">
-            <div className="card p-6">
-              <div className="text-center mb-6">
-                <div className="text-5xl mb-3">✅</div>
-                <h2 className="text-2xl font-bold text-green-700 mb-2">Global Recalculation Complete!</h2>
-              </div>
-
-              <div className="space-y-3 mb-6">
-                <div className="flex justify-between p-3 bg-green-50 rounded">
-                  <span className="font-medium">Facts Deleted:</span>
-                  <span className="font-bold text-green-700">{executeResult.factsDeleted}</span>
-                </div>
-                <div className="flex justify-between p-3 bg-green-50 rounded">
-                  <span className="font-medium">Players Auto-Cleaned:</span>
-                  <span className="font-bold text-green-700">{executeResult.statsAutoCleanedUp}</span>
-                </div>
-                <div className="flex justify-between p-3 bg-green-50 rounded">
-                  <span className="font-medium">Tournaments Recalculated:</span>
-                  <span className="font-bold text-green-700">{executeResult.tournamentsRecalculated}</span>
-                </div>
-                <div className="flex justify-between p-3 bg-green-50 rounded">
-                  <span className="font-medium">Matches Regenerated:</span>
-                  <span className="font-bold text-green-700">{executeResult.matchesRecalculated}</span>
-                </div>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6">
-                <div className="text-sm text-blue-900">
-                  <strong>Result:</strong>
-                  <p className="mt-2">{executeResult.message}</p>
-                  <p className="mt-3 text-xs font-semibold">All player stats are being automatically rebuilt in real-time by triggers.</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={handleReset}
-                  className="btn btn-primary flex-1"
-                >
-                  Run Again
-                </button>
-                <Link to="/admin" className="btn btn-secondary">
-                  Back to Admin
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </Layout>
+      ))}
+    </div>
   );
 }

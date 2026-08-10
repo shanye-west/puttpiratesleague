@@ -1,11 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Plus, Search } from "lucide-react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase";
-import Layout from "../../components/Layout";
-import StatusBanner from "../../components/admin/StatusBanner";
+import AdminPage from "../../components/admin/AdminPage";
 import AdminSection from "../../components/admin/AdminSection";
+import NavRow, { EmptyRow } from "../../components/admin/NavRow";
+import { inputClass } from "../../components/admin/inputStyles";
+import { Button } from "../../components/ui/button";
 import { getErrorMessage } from "../../api/errors";
+import { cn } from "../../lib/utils";
 import type { CourseDoc } from "../../types";
 
 /** Course list — open one to edit, or create a new one. */
@@ -13,6 +17,7 @@ export default function CoursesAdmin() {
   const [courses, setCourses] = useState<CourseDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     getDocs(collection(db, "courses"))
@@ -27,49 +32,59 @@ export default function CoursesAdmin() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <Layout title="Courses" showBack>
-        <div className="p-4">Loading...</div>
-      </Layout>
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return courses;
+    return courses.filter(
+      (c) => (c.name ?? "").toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
     );
-  }
+  }, [courses, search]);
 
   return (
-    <Layout title="Courses" showBack>
-      <div className="p-4 max-w-2xl mx-auto space-y-4">
-        <StatusBanner error={error} />
-
-        <AdminSection
-          title="Courses"
-          description="Hole pars, handicap indexes, and yardages used for stroke calculations and skins."
-        >
-          <div className="space-y-2">
-            {courses.map((c) => (
-              <Link
-                key={c.id}
-                to={`/admin/courses/${c.id}`}
-                className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold">{c.name || c.id}</div>
-                    <div className="text-sm text-gray-600">
-                      {c.tees ? `${c.tees} tees · ` : ""}Par {c.par ?? "?"} · Rating {c.rating ?? "?"} · Slope {c.slope ?? "?"}
-                    </div>
-                  </div>
-                  <div className="text-2xl">→</div>
-                </div>
-              </Link>
-            ))}
-            {courses.length === 0 && <div className="text-sm text-gray-500">No courses yet.</div>}
-          </div>
-
-          <Link to="/admin/courses/new" className="inline-block mt-4 text-sm text-blue-600 hover:underline">
-            + Create new course
+    <AdminPage
+      title="Courses"
+      breadcrumbs={[{ label: "Admin", to: "/admin" }, { label: "Courses" }]}
+      description="Hole pars, handicap indexes, and yardages — the inputs for stroke calculations and skins."
+      error={error}
+      loading={loading}
+      actions={
+        <Button asChild variant="outline" size="sm">
+          <Link to="/admin/courses/new">
+            <Plus className="h-4 w-4" />
+            New course
           </Link>
-        </AdminSection>
-      </div>
-    </Layout>
+        </Button>
+      }
+    >
+      <AdminSection title={`Courses (${courses.length})`}>
+        {courses.length > 6 && (
+          <div className="relative mb-3">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search courses"
+              className={cn(inputClass, "pl-9")}
+              aria-label="Search courses"
+            />
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {visible.map((c) => (
+            <NavRow
+              key={c.id}
+              to={`/admin/courses/${c.id}`}
+              title={c.name || c.id}
+              subtitle={`${c.tees ? `${c.tees} tees · ` : ""}par ${c.par ?? "?"} · rating ${c.rating ?? "?"} · slope ${c.slope ?? "?"}`}
+            />
+          ))}
+          {visible.length === 0 && (
+            <EmptyRow>{courses.length === 0 ? "No courses yet." : "No courses match that search."}</EmptyRow>
+          )}
+        </div>
+      </AdminSection>
+    </AdminPage>
   );
 }

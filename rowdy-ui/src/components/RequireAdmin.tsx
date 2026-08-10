@@ -32,7 +32,7 @@ export default function RequireAdmin({ children }: { children: ReactNode }) {
         <div className="empty-state">
           <div className="empty-state-icon">🔒</div>
           <div className="empty-state-text">Access Denied</div>
-          <div className="text-sm text-gray-500 mt-2">Admin access required</div>
+          <div className="mt-2 text-sm text-muted-foreground">Admin access required</div>
           <Link to="/" className="btn btn-primary mt-4">Go Home</Link>
         </div>
       </Layout>

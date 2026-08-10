@@ -13,7 +13,6 @@ import { NotificationsProvider } from "./contexts/NotificationsContext";
 import App from "./App";
 import ErrorBoundary, { NotFound } from "./components/ErrorBoundary";
 import { LayoutShell } from "./components/Layout";
-import RequireAdmin from "./components/RequireAdmin";
 import RequireAuth from "./components/RequireAuth";
 
 // Lazy load routes for code splitting - reduces initial bundle size
@@ -37,6 +36,7 @@ const History = lazyWithRecovery(() => import("./routes/History"));
 const NotificationSettings = lazyWithRecovery(() => import("./routes/NotificationSettings"));
 const RulesOfficial = lazyWithRecovery(() => import("./routes/RulesOfficial"));
 const Tournament = lazyWithRecovery(() => import("./routes/Tournament"));
+const AdminLayout = lazyWithRecovery(() => import("./routes/admin/AdminLayout"));
 const AdminDashboard = lazyWithRecovery(() => import("./routes/admin/AdminDashboard"));
 const AdminTournamentLayout = lazyWithRecovery(() => import("./routes/admin/AdminTournamentLayout"));
 const TournamentHome = lazyWithRecovery(() => import("./routes/admin/TournamentHome"));
@@ -93,32 +93,40 @@ const router = createBrowserRouter(
         { path: "settings/notifications", element: <NotificationSettings /> },
         { path: "tournament/:tournamentId", element: <Tournament /> },
         { path: "login", element: <Login /> },
-        { path: "admin", element: <RequireAdmin><AdminDashboard /></RequireAdmin> },
+        // The whole admin surface shares one layout: a single RequireAdmin gate
+        // plus the persistent section nav. URLs are unchanged.
         {
-          path: "admin/t/:tournamentId",
-          element: <RequireAdmin><AdminTournamentLayout /></RequireAdmin>,
+          path: "admin",
+          element: <AdminLayout />,
           children: [
-            { index: true, element: <TournamentHome /> },
-            { path: "settings", element: <TournamentSettings /> },
-            { path: "round/:roundId", element: <RoundAdmin /> },
-            { path: "round/:roundId/match/new", element: <MatchCreate /> },
-            { path: "side-event/:sideEventId", element: <SideEventAdmin /> },
-            { path: "match/:matchId", element: <MatchAdmin /> },
+            { index: true, element: <AdminDashboard /> },
+            {
+              path: "t/:tournamentId",
+              element: <AdminTournamentLayout />,
+              children: [
+                { index: true, element: <TournamentHome /> },
+                { path: "settings", element: <TournamentSettings /> },
+                { path: "round/:roundId", element: <RoundAdmin /> },
+                { path: "round/:roundId/match/new", element: <MatchCreate /> },
+                { path: "side-event/:sideEventId", element: <SideEventAdmin /> },
+                { path: "match/:matchId", element: <MatchAdmin /> },
+              ],
+            },
+            { path: "players", element: <PlayersAdmin /> },
+            { path: "courses", element: <CoursesAdmin /> },
+            { path: "courses/:courseId", element: <CourseEdit /> },
+            { path: "recalculate", element: <RecalculateTournamentStats /> },
+            // Legacy task-page URLs from the pre-entity-centric admin
+            { path: "match", element: <Navigate to="/admin" replace /> },
+            { path: "match/edit", element: <Navigate to="/admin" replace /> },
+            { path: "match/recalculate", element: <Navigate to="/admin" replace /> },
+            { path: "match/controls", element: <Navigate to="/admin" replace /> },
+            { path: "round/recap", element: <Navigate to="/admin" replace /> },
+            { path: "rounds", element: <Navigate to="/admin" replace /> },
+            { path: "tournament", element: <Navigate to="/admin" replace /> },
+            { path: "tournament/recalculate", element: <Navigate to="/admin/recalculate" replace /> },
           ],
         },
-        { path: "admin/players", element: <RequireAdmin><PlayersAdmin /></RequireAdmin> },
-        { path: "admin/courses", element: <RequireAdmin><CoursesAdmin /></RequireAdmin> },
-        { path: "admin/courses/:courseId", element: <RequireAdmin><CourseEdit /></RequireAdmin> },
-        { path: "admin/recalculate", element: <RequireAdmin><RecalculateTournamentStats /></RequireAdmin> },
-        // Legacy task-page URLs from the pre-entity-centric admin
-        { path: "admin/match", element: <Navigate to="/admin" replace /> },
-        { path: "admin/match/edit", element: <Navigate to="/admin" replace /> },
-        { path: "admin/match/recalculate", element: <Navigate to="/admin" replace /> },
-        { path: "admin/match/controls", element: <Navigate to="/admin" replace /> },
-        { path: "admin/round/recap", element: <Navigate to="/admin" replace /> },
-        { path: "admin/rounds", element: <Navigate to="/admin" replace /> },
-        { path: "admin/tournament", element: <Navigate to="/admin" replace /> },
-        { path: "admin/tournament/recalculate", element: <Navigate to="/admin/recalculate" replace /> },
         { path: "*", element: <NotFound /> },
       ],
     },
