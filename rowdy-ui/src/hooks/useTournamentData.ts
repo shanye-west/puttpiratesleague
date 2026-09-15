@@ -217,7 +217,8 @@ export function useTournamentData(options: UseTournamentDataOptions = {}): UseTo
   // Whether every loaded round carries denormalized totals. When so (and the
   // caller opted in), aggregate stats come straight from the rounds collection
   // and the matches subscription below is skipped entirely.
-  const allRoundsHaveTotals = rounds.length > 0 && rounds.every(r => r.pointTotals !== undefined);
+  const hasRounds = rounds.length > 0;
+  const allRoundsHaveTotals = hasRounds && rounds.every(r => r.pointTotals !== undefined);
   const useDenormalized = preferDenormalizedTotals && allRoundsHaveTotals;
 
   // Stable signatures of the locked/unlocked round-id sets. The rounds snapshot
@@ -251,7 +252,9 @@ export function useTournamentData(options: UseTournamentDataOptions = {}): UseTo
     // burst that we'd immediately discard once totals are confirmed present.
     if (preferDenormalizedTotals) {
       if (!roundsLoaded) return; // still loading rounds; keep matches "not loaded"
-      if (useDenormalized) {
+      // No rounds means nothing to total — don't hold a listener on an empty
+      // result (e.g. a tournament that so far only has a captains' match).
+      if (useDenormalized || !hasRounds) {
         setMatchesByRound({});
         setMatchesLoaded(true);
         return;
@@ -372,7 +375,7 @@ export function useTournamentData(options: UseTournamentDataOptions = {}): UseTo
       }
     );
     return () => unsub();
-  }, [tournament?.id, tournamentLoaded, preferDenormalizedTotals, roundsLoaded, useDenormalized, splitLockedRounds, lockedRoundIdsKey, unlockedRoundIdsKey]);
+  }, [tournament?.id, tournamentLoaded, preferDenormalizedTotals, roundsLoaded, useDenormalized, hasRounds, splitLockedRounds, lockedRoundIdsKey, unlockedRoundIdsKey]);
 
   // -------------------------------------------------------------------------
   // 4) Fetch courses needed by current tournament rounds (ONE-TIME, not subscription)

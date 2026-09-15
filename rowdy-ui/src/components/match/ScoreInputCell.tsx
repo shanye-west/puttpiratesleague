@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, type CSSProperties } from "react";
 import { ScoreNumberPicker } from "./ScoreNumberPicker";
+import { ScoreShapeOverlay } from "./ScoreShapeOverlay";
 
 /** Props for ScoreInputCell */
 export interface ScoreInputCellProps {
@@ -43,7 +44,7 @@ export const ScoreInputCell = memo(function ScoreInputCell({
 }: ScoreInputCellProps) {
   // Generate unique popover ID based on cellId (or fall back to holeKey)
   const popoverId = useMemo(() => `picker-${cellId || holeKey}`, [cellId, holeKey]);
-  
+
   // Create a subtle tint using the passed teamColor. Use a darker tint for solo and lighter for tied.
   const tintPercent = lowScoreStatus === 'solo' ? '15%' : lowScoreStatus === 'tied' ? '5%' : null;
   const lowScoreStyle: CSSProperties | undefined = tintPercent && teamColor
@@ -56,16 +57,6 @@ export const ScoreInputCell = memo(function ScoreInputCell({
       })()
     : undefined;
 
-  // Calculate how many under par (only for birdies or better)
-  const underPar = typeof value === 'number' && par ? par - value : 0;
-  // Number of circles: 1 for birdie (1 under), 2 for eagle (2 under), etc.
-  const circleCount = underPar > 0 ? underPar : 0;
-  
-  // Calculate how many over par (for bogeys and worse)
-  const overPar = typeof value === 'number' && par ? value - par : 0;
-  // Number of squares: 1 for bogey (1 over), 2 for double bogey (2 over), etc.
-  const squareCount = overPar > 0 ? overPar : 0;
-  
   // Handle number selection from picker
   const handleSelect = useCallback((num: number) => {
     // Light haptic tick on score entry (Android; iOS Safari ignores it).
@@ -77,7 +68,7 @@ export const ScoreInputCell = memo(function ScoreInputCell({
       popover.hidePopover();
     }
   }, [holeKey, onChange, popoverId]);
-  
+
   // Handle clear from picker
   const handleClear = useCallback(() => {
     onChange(holeKey, null);
@@ -112,7 +103,7 @@ export const ScoreInputCell = memo(function ScoreInputCell({
       >
         {value !== "" ? value : ""}
       </button>
-      
+
       {/* Number picker popover - uses Popover API with anchor positioning */}
       <ScoreNumberPicker
         id={popoverId}
@@ -120,66 +111,9 @@ export const ScoreInputCell = memo(function ScoreInputCell({
         onSelect={handleSelect}
         onClear={handleClear}
       />
-      {/* Birdie/Eagle circles - centered over input */}
-      {circleCount > 0 && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          {/* Outer circles for eagle+ (2+ under par) */}
-          {circleCount >= 2 && (
-            <div
-              className="absolute rounded-full"
-              style={{ width: '32px', height: '32px', borderWidth: '1px', borderColor: isPostMatch ? 'var(--divider)' : 'var(--text-primary)', borderStyle: 'solid' }}
-            />
-          )}
-          {circleCount >= 3 && (
-            <div
-              className="absolute rounded-full"
-              style={{ width: '24px', height: '24px', borderWidth: '1px', borderColor: isPostMatch ? 'var(--divider)' : 'var(--text-primary)', borderStyle: 'solid' }}
-            />
-          )}
-          {circleCount >= 4 && (
-            <div
-              className="absolute rounded-full"
-              style={{ width: '20px', height: '20px', borderWidth: '1px', borderColor: isPostMatch ? 'var(--divider)' : 'var(--text-primary)', borderStyle: 'solid' }}
-            />
-          )}
-          {/* Inner circle for birdie (always shown when under par) */}
-          <div
-            className="absolute rounded-full"
-            style={{ width: '28px', height: '28px', borderWidth: '1px', borderColor: isPostMatch ? 'var(--divider)' : 'var(--text-primary)', borderStyle: 'solid' }}
-          />
-        </div>
-      )}
-      
-      {/* Bogey/Double Bogey squares - centered over input */}
-      {squareCount > 0 && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          {/* Outer squares for double bogey+ (2+ over par) */}
-          {squareCount >= 2 && (
-            <div
-              className="absolute"
-              style={{ width: '32px', height: '32px', borderWidth: '1px', borderColor: isPostMatch ? 'var(--divider)' : 'var(--text-primary)', borderStyle: 'solid', borderRadius: '3px' }}
-            />
-          )}
-          {squareCount >= 3 && (
-            <div
-              className="absolute"
-              style={{ width: '24px', height: '24px', borderWidth: '1px', borderColor: isPostMatch ? 'var(--divider)' : 'var(--text-primary)', borderStyle: 'solid', borderRadius: '3px' }}
-            />
-          )}
-          {squareCount >= 4 && (
-            <div
-              className="absolute"
-              style={{ width: '20px', height: '20px', borderWidth: '1px', borderColor: isPostMatch ? 'var(--divider)' : 'var(--text-primary)', borderStyle: 'solid', borderRadius: '3px' }}
-            />
-          )}
-          {/* Inner square for bogey (always shown when over par) */}
-          <div
-            className="absolute"
-            style={{ width: '28px', height: '28px', borderWidth: '1px', borderColor: isPostMatch ? 'var(--divider)' : 'var(--text-primary)', borderStyle: 'solid', borderRadius: '3px' }}
-          />
-        </div>
-      )}
-      
+      {/* Birdie/eagle circles and bogey squares - centered over input */}
+      <ScoreShapeOverlay value={value} par={par} muted={isPostMatch} />
+
       {hasStroke && (
         <div className="absolute top-1 right-1 w-2 h-2 bg-sky-400 rounded-full"></div>
       )}

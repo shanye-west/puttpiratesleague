@@ -9,6 +9,8 @@ import LastUpdated from "../components/LastUpdated";
 import ScoreBlock from "../components/ScoreBlock";
 import ScoreTrackerBar from "../components/ScoreTrackerBar";
 import OfflineImage from "../components/OfflineImage";
+import { ComponentErrorBoundary } from "../components/ComponentErrorBoundary";
+import CaptainsMatchSection from "../components/captains/CaptainsMatchSection";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent } from "../components/ui/card";
 import { formatRoundType, getTournamentWinner } from "../utils";
@@ -70,6 +72,10 @@ function TournamentComponent() {
   const pointsToWin = totalPointsAvailable ? (totalPointsAvailable / 2 + 0.5) : null;
   const pointsToWinDisplay = pointsToWin !== null ? (Number.isInteger(pointsToWin) ? String(pointsToWin) : pointsToWin.toFixed(1)) : "";
   const showPoints = totalPointsAvailable > 0;
+  // Same rule as Home: a tournament that so far only has its captains' match
+  // shows just that match.
+  const hasCaptainsMatch = !!tournament.hasCaptainsMatch;
+  const showCup = !hasCaptainsMatch || rounds.length > 0;
 
   const winner = getTournamentWinner(
     tournament.tiebreakerWinner,
@@ -88,6 +94,7 @@ function TournamentComponent() {
   return (
     <Layout title={tName} series={tSeries} showBack tournamentLogo={tLogo}>
       <div className="space-y-6 px-4 py-6">
+        {showCup && (
         <section>
           <Card className="relative overflow-hidden border-white/40 bg-card/75 shadow-[0_20px_60px_rgba(15,23,42,0.12)] backdrop-blur">
 
@@ -173,7 +180,9 @@ function TournamentComponent() {
             </CardContent>
           </Card>
         </section>
+        )}
 
+        {showCup && (
         <section className="space-y-3">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2 pl-2 text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
@@ -193,8 +202,8 @@ function TournamentComponent() {
                     <Card className="border-border/80 bg-card/80">
                       <CardContent className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-4">
                         <div className="flex items-center gap-3">
-                          <OfflineImage 
-                            src={tournament.teamA?.logo} 
+                          <OfflineImage
+                            src={tournament.teamA?.logo}
                             alt={tournament.teamA?.name || "Team A"}
                             fallbackIcon="🔵"
                             style={{ width: 22, height: 22, objectFit: "contain" }}
@@ -229,8 +238,8 @@ function TournamentComponent() {
                               projLeft
                             />
                           </div>
-                          <OfflineImage 
-                            src={tournament.teamB?.logo} 
+                          <OfflineImage
+                            src={tournament.teamB?.logo}
                             alt={tournament.teamB?.name || "Team B"}
                             fallbackIcon="🔴"
                             style={{ width: 22, height: 22, objectFit: "contain" }}
@@ -244,6 +253,15 @@ function TournamentComponent() {
             })}
           </div>
         </section>
+        )}
+
+        {hasCaptainsMatch && (
+          <ComponentErrorBoundary
+            fallback={<div className="card p-4 text-center text-sm text-muted-foreground">Captains&apos; match unavailable</div>}
+          >
+            <CaptainsMatchSection tournament={tournament} />
+          </ComponentErrorBoundary>
+        )}
 
         <div>
           <LastUpdated />

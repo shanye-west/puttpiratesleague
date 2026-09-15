@@ -200,6 +200,11 @@ export type TournamentDoc = {
   // callables so the hamburger menu can link them without a second listener on
   // every page. `hidden` drops the link while keeping the data.
   sideEvents?: { id: string; name: string; hidden?: boolean }[];
+  // Set by the captainsMatchOps callables when this tournament has a captains'
+  // match (the pre-draft running singles match — see CaptainsMatchDoc). Home and
+  // the tournament page only open a listener on captainsMatches/{id} when it's
+  // true, so every other tournament costs no extra read.
+  hasCaptainsMatch?: boolean;
 };
 
 // NEW: Hole definition (static data)
@@ -320,6 +325,51 @@ export type SideEventTeamDoc = {
    * scorer's write wiping another's. Anything non-numeric reads as "not scored".
    */
   holes?: Record<string, { gross: number | null } | undefined>;
+};
+
+// ============================================================================
+// CAPTAINS' MATCH
+// The pre-draft, season-long running singles match between the two captains
+// (2027: 20 rounds; the winner chooses to draft 1st overall or defer). Played
+// off the app — an admin enters each round's card afterwards — and the running
+// status is computed client-side by utils/captainsMatchScoring.
+//
+// Like side events, it lives in its own collection so no scoring, stats,
+// skins, betting or notification trigger (all keyed on `matches`) ever sees
+// it: no Cup points, no player stats. Do not model it as rounds/matches.
+// ============================================================================
+
+/** One round's card. Arrays are hole-indexed (0 = hole 1) and always length 18. */
+export type CaptainsMatchRound = {
+  /** 1..totalRounds — also this card's key in `CaptainsMatchDoc.rounds`. */
+  roundNumber: number;
+  /** "YYYY-MM-DD" wall-clock date, no timezone (like match.teeTime). */
+  playedOn: string | null;
+  /** App course the round was played on — supplies par/hcp/yards for the card. */
+  courseId: string | null;
+  /** Copied from the course at save time, or free text when courseId is null. */
+  courseName: string | null;
+  tees: string | null;
+  grossA: (number | null)[];
+  grossB: (number | null)[];
+  /** 0/1 per hole: where player A receives a handicap stroke (strokesReceived convention). */
+  strokesA: number[];
+  strokesB: number[];
+};
+
+/** captainsMatches/{tournamentId} — public read, server-only write. */
+export type CaptainsMatchDoc = {
+  id: string;
+  tournamentId: string;
+  name: string;
+  /** What the match decides, shown with the status. */
+  stakes?: string;
+  /** Shown on the left, in the teamA color. */
+  playerAId: string;
+  /** Shown on the right, in the teamB color. */
+  playerBId: string;
+  totalRounds: number;
+  rounds?: Record<string, CaptainsMatchRound>;
 };
 
 export type MatchDoc = {

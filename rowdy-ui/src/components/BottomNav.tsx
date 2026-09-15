@@ -18,8 +18,10 @@ const TABS: Tab[] = [
     to: "/",
     label: "Home",
     Icon: Home,
-    // The live tournament "stack" — schedule, rounds, and matches all hang off Home.
-    isActive: (p) => p === "/" || p.startsWith("/round") || p.startsWith("/match"),
+    // The live tournament "stack" — schedule, rounds, matches, and the captains'
+    // match's round cards all hang off Home.
+    isActive: (p) =>
+      p === "/" || p.startsWith("/round") || p.startsWith("/match") || p.startsWith("/captains-match"),
   },
   {
     to: "/teams",

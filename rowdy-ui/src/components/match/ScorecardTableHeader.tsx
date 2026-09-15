@@ -195,9 +195,9 @@ export function ScorecardTableHeader({
       <tr className="bg-muted text-muted-foreground text-xs font-semibold">
         <td className="sticky left-0 z-10 bg-muted text-left px-3 py-1.5">Par</td>
         {holes.slice(0, 9).map(h => (
-          <td key={h.k} className="py-1.5">{h.par}</td>
+          <td key={h.k} className="py-1.5">{h.par || ""}</td>
         ))}
-        <td className="py-1.5 bg-muted font-bold border-l-2 border-border">{totals.parOut}</td>
+        <td className="py-1.5 bg-muted font-bold border-l-2 border-border">{totals.parOut || ""}</td>
         {holes.slice(9, 18).map((h, i) => {
           const holeIdx = 9 + i;
           const isPostMatch = closingHole !== null && holeIdx > closingHole;
@@ -207,12 +207,12 @@ export function ScorecardTableHeader({
               key={h.k} 
               className={`py-1.5 ${i === 0 ? "border-l-2 border-border" : ""} ${isPostMatch ? "bg-muted/60" : ""}`}
             >
-              {h.par}
+              {h.par || ""}
             </td>
           );
         })}
-        <td className="py-1.5 bg-muted font-bold border-l-2 border-border">{totals.parIn}</td>
-        <td className="py-1.5 bg-muted font-bold">{totals.parTotal}</td>
+        <td className="py-1.5 bg-muted font-bold border-l-2 border-border">{totals.parIn || ""}</td>
+        <td className="py-1.5 bg-muted font-bold">{totals.parTotal || ""}</td>
       </tr>
     </thead>
   );

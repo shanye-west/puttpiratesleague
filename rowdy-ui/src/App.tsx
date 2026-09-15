@@ -11,8 +11,10 @@ import ScoreBlock from "./components/ScoreBlock";
 import ScoreTrackerBar from "./components/ScoreTrackerBar";
 import ChampionBanner from "./components/ChampionBanner";
 import OfflineImage from "./components/OfflineImage";
+import { ComponentErrorBoundary } from "./components/ComponentErrorBoundary";
+import CaptainsMatchSection from "./components/captains/CaptainsMatchSection";
 import { LoadingEscalation } from "./components/LoadingScreen";
-import { HomePageSkeleton } from "./components/Skeleton";
+import { CaptainsMatchSkeleton, HomePageSkeleton } from "./components/Skeleton";
 import { ViewTransitionLink } from "./components/ViewTransitionLink";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -37,7 +39,7 @@ export default function App() {
     roundStats,
     totalPointsAvailable,
   } = useTournamentData({ prefetchedTournament: tournament, preferDenormalizedTotals: true });
-  
+
   const loading = tournamentLoading || dataLoading;
 
   // "RX Pairings Selection Live" banner: shown only while a round's pairings
@@ -58,7 +60,13 @@ export default function App() {
   // paint reads as the page taking shape, and content swaps in without a jump.
   if (loading) return (
     <Layout title="Rowdy Cup" series={tournament?.series} tournamentLogo={tournament?.tournamentLogo}>
-      <HomePageSkeleton />
+      {tournament?.hasCaptainsMatch ? (
+        <div className="px-4 py-6">
+          <CaptainsMatchSkeleton />
+        </div>
+      ) : (
+        <HomePageSkeleton />
+      )}
       <LoadingEscalation />
     </Layout>
   );
@@ -75,6 +83,11 @@ export default function App() {
   // the admin has hidden it (e.g. once the draft is done).
   const draftPoolCount = tournament?.draftPool ? Object.keys(tournament.draftPool).length : 0;
   const showDraftPool = draftPoolCount > 0 && !tournament?.hideDraftPool;
+  // A tournament that so far only has its captains' match (next year's, before
+  // any Cup rounds exist) shows just that match; every other tournament shows
+  // the Cup exactly as before, with the captains' match below it if it has one.
+  const hasCaptainsMatch = !!tournament?.hasCaptainsMatch;
+  const showCup = !hasCaptainsMatch || rounds.length > 0;
 
   return (
     <Layout title={tName} series={tSeries} tournamentLogo={tLogo}>
@@ -96,12 +109,14 @@ export default function App() {
         </div>
       ) : (
         <div className="space-y-6 px-4 py-6">
-          <ChampionBanner
-            tournament={tournament}
-            teamAConfirmed={stats.teamAConfirmed}
-            teamBConfirmed={stats.teamBConfirmed}
-            totalPointsAvailable={totalPointsAvailable}
-          />
+          {showCup && (
+            <ChampionBanner
+              tournament={tournament}
+              teamAConfirmed={stats.teamAConfirmed}
+              teamBConfirmed={stats.teamBConfirmed}
+              totalPointsAvailable={totalPointsAvailable}
+            />
+          )}
 
           {showDraftPool && (
             <section>
@@ -124,6 +139,7 @@ export default function App() {
             </section>
           )}
 
+          {showCup && (
           <section>
             <Card className="relative overflow-hidden border-white/40 bg-card/75 shadow-[0_20px_60px_rgba(15,23,42,0.12)] backdrop-blur">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(191,32,60,0.14),_transparent_55%)]" />
@@ -197,6 +213,7 @@ export default function App() {
               </CardContent>
             </Card>
           </section>
+          )}
 
           {livePairing && (
             <section>
@@ -226,6 +243,7 @@ export default function App() {
             </section>
           )}
 
+          {showCup && (
           <section className="space-y-3">
               <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2 pl-2 text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
@@ -245,8 +263,8 @@ export default function App() {
                       <Card className="border-border/80 bg-card/80">
                         <CardContent className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-4">
                           <div className="flex items-center gap-3">
-                            <OfflineImage 
-                              src={tournament.teamA?.logo} 
+                            <OfflineImage
+                              src={tournament.teamA?.logo}
                               alt={tournament.teamA?.name || "Team A"}
                               fallbackIcon="🔵"
                               style={{ width: 22, height: 22, objectFit: "contain" }}
@@ -281,8 +299,8 @@ export default function App() {
                                 projLeft
                               />
                             </div>
-                            <OfflineImage 
-                              src={tournament.teamB?.logo} 
+                            <OfflineImage
+                              src={tournament.teamB?.logo}
                               alt={tournament.teamB?.name || "Team B"}
                               fallbackIcon="🔴"
                               style={{ width: 22, height: 22, objectFit: "contain" }}
@@ -296,6 +314,15 @@ export default function App() {
               })}
             </div>
           </section>
+          )}
+
+          {hasCaptainsMatch && (
+            <ComponentErrorBoundary
+              fallback={<div className="card p-4 text-center text-sm text-muted-foreground">Captains&apos; match unavailable</div>}
+            >
+              <CaptainsMatchSection tournament={tournament} />
+            </ComponentErrorBoundary>
+          )}
 
           <div>
             <LastUpdated />

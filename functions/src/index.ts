@@ -2216,6 +2216,20 @@ export {
 } from "./callables/sideEventOps.js";
 
 // ============================================================================
+// CAPTAINS' MATCH CALLABLES
+// The pre-draft running singles match between the two captains
+// (captainsMatches/{tournamentId}). Its own collection, so no scoring/stats
+// trigger can ever see it.
+// ============================================================================
+
+export {
+  saveCaptainsMatch,
+  saveCaptainsMatchRound,
+  deleteCaptainsMatchRound,
+  deleteCaptainsMatch,
+} from "./callables/captainsMatchOps.js";
+
+// ============================================================================
 // PAIRINGS DRAFT CALLABLES
 // Live snake-draft for round pairings (pairingDrafts/{roundId}).
 // ============================================================================

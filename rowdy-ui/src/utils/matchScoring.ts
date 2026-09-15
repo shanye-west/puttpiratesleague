@@ -30,7 +30,7 @@ function isNum(n: any): n is number {
 const MIN_GROSS_SCORE = 1;
 const MAX_GROSS_SCORE = 30;
 
-function isValidGross(n: any): n is number {
+export function isValidGross(n: any): n is number {
   return isNum(n) && Number.isInteger(n) && n >= MIN_GROSS_SCORE && n <= MAX_GROSS_SCORE;
 }
 

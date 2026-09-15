@@ -188,6 +188,19 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // ------------------------------------------------------------------
+    // CAPTAINS' MATCH — the pre-draft running singles match between the two
+    // captains (captainsMatches/{tournamentId}). Admins enter each round's
+    // card through the captainsMatchOps callables and the running status is
+    // computed client-side. Like side events it is deliberately NOT
+    // rounds/matches, so it awards no Cup points and records no stats.
+    // Public read, server-only write.
+    // ------------------------------------------------------------------
+    match /captainsMatches/{tournamentId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Courses: public read, server-only write
     match /courses/{courseId} {
       allow read: if true;

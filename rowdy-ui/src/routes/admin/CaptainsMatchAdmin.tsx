@@ -1,0 +1,269 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { collection, doc, getDocs, onSnapshot } from "firebase/firestore";
+import { ExternalLink } from "lucide-react";
+import { db } from "../../firebase";
+import AdminPage, { AdminNotFound } from "../../components/admin/AdminPage";
+import AdminSection from "../../components/admin/AdminSection";
+import CaptainsMatchForm from "../../components/admin/CaptainsMatchForm";
+import ConfirmDialog from "../../components/admin/ConfirmDialog";
+import NavRow from "../../components/admin/NavRow";
+import { InfoNote } from "../../components/admin/fields";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { useAdminTournament } from "../../contexts/AdminTournamentContext";
+import { adminApi } from "../../api/admin";
+import { getErrorMessage } from "../../api/errors";
+import {
+  formatCaptainsMatchStatus,
+  formatPlayedOn,
+  summarizeCaptainsMatch,
+  type CaptainsRoundSummary,
+} from "../../utils/captainsMatchScoring";
+import type { CaptainsMatchSettings } from "../../api/adminContracts";
+import type { CaptainsMatchDoc, PlayerDoc } from "../../types";
+
+/**
+ * Admin page for a tournament's captains' match — the pre-draft running singles
+ * match between the captains: its settings, a row per round that opens that
+ * round's card, and deletion. Creating it is the same form, empty.
+ */
+export default function CaptainsMatchAdmin() {
+  const navigate = useNavigate();
+  const { tournamentId, tournament, loading: ctxLoading } = useAdminTournament();
+
+  const [match, setMatch] = useState<CaptainsMatchDoc | null>(null);
+  const [matchLoaded, setMatchLoaded] = useState(false);
+  const [allPlayers, setAllPlayers] = useState<PlayerDoc[]>([]);
+  const [playersLoading, setPlayersLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // The players usually aren't on a roster yet (the captains are known before
+  // the draft), so the pickers list everyone.
+  useEffect(() => {
+    getDocs(collection(db, "players"))
+      .then((snap) =>
+        setAllPlayers(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() } as PlayerDoc))
+            .sort((a, b) => (a.displayName ?? a.id).localeCompare(b.displayName ?? b.id))
+        )
+      )
+      .catch((err) => setError(getErrorMessage(err, "Failed to load players")))
+      .finally(() => setPlayersLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, "captainsMatches", tournamentId),
+      (snap) => {
+        setMatch(snap.exists() ? ({ id: snap.id, ...snap.data() } as CaptainsMatchDoc) : null);
+        setMatchLoaded(true);
+      },
+      (err) => {
+        setError(getErrorMessage(err, "Failed to load the captains' match"));
+        setMatchLoaded(true);
+      }
+    );
+    return unsub;
+  }, [tournamentId]);
+
+  const summary = useMemo(() => (match ? summarizeCaptainsMatch(match) : null), [match]);
+  const nameById = useMemo(
+    () => Object.fromEntries(allPlayers.map((p) => [p.id, p.displayName ?? p.id])),
+    [allPlayers]
+  );
+
+  const handleSubmit = async (settings: CaptainsMatchSettings) => {
+    setError(null);
+    setSuccess(null);
+    setSubmitting(true);
+    try {
+      const res = await adminApi.saveCaptainsMatch({ tournamentId, ...settings });
+      setSuccess(res.created ? "Captains' match created." : "Settings saved.");
+    } catch (err) {
+      console.error("Error saving captains' match:", err);
+      setError(getErrorMessage(err, "Failed to save the captains' match"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setError(null);
+    setDeleting(true);
+    try {
+      await adminApi.deleteCaptainsMatch({ tournamentId });
+      navigate(`/admin/t/${tournamentId}`, { replace: true });
+    } catch (err) {
+      console.error("Delete captains' match failed:", err);
+      setError(getErrorMessage(err, "Failed to delete the captains' match"));
+      setConfirmDelete(false);
+      setDeleting(false);
+    }
+  };
+
+  const breadcrumbs = [
+    { label: "Admin", to: "/admin" },
+    { label: tournament?.name ?? "Tournament", to: `/admin/t/${tournamentId}` },
+    { label: "Captains' match" },
+  ];
+
+  if (ctxLoading || playersLoading || !matchLoaded) {
+    return (
+      <AdminPage title="Captains' match" breadcrumbs={breadcrumbs} loading>
+        {null}
+      </AdminPage>
+    );
+  }
+
+  if (!tournament) {
+    return (
+      <AdminNotFound
+        title="Captains' match"
+        message="Tournament not found"
+        backTo="/admin"
+        backLabel="Back to Admin"
+        breadcrumbs={breadcrumbs}
+      />
+    );
+  }
+
+  const firstName = (pid: string) => (nameById[pid] ?? pid).trim().split(/\s+/)[0];
+  const highestRound = summary?.rounds.reduce((max, r) => Math.max(max, r.roundNumber), 0) ?? 0;
+
+  const roundTitle = (m: CaptainsMatchDoc, r: CaptainsRoundSummary) => {
+    if (r.thru === 0) return "No scores yet";
+    if (r.holesWonA === r.holesWonB) return `Halved ${r.holesWonA}–${r.holesWonB}`;
+    const aWon = r.holesWonA > r.holesWonB;
+    const winnerName = firstName(aWon ? m.playerAId : m.playerBId);
+    return `${winnerName} won ${Math.max(r.holesWonA, r.holesWonB)}–${Math.min(r.holesWonA, r.holesWonB)}`;
+  };
+
+  return (
+    <AdminPage
+      headerTitle={`${tournament.year} ${tournament.name}`}
+      breadcrumbs={breadcrumbs}
+      eyebrow="Captains' match"
+      title={match?.name ?? "Set up the captains' match"}
+      description="The pre-draft running singles match between the captains: the margin carries from round to round. Rounds are played off the app — enter each card here. It awards no Cup points and records no player stats."
+      badges={summary ? <Badge variant="outline">{summary.roundsPlayed}/{summary.totalRounds} rounds</Badge> : null}
+      error={error}
+      success={success}
+      actions={
+        match ? (
+          <Button asChild variant="outline" size="sm">
+            <Link to={tournament.active ? "/" : `/tournament/${tournamentId}`}>
+              <ExternalLink className="h-4 w-4" />
+              View
+            </Link>
+          </Button>
+        ) : null
+      }
+    >
+      <AdminSection
+        title={match ? "Settings" : "New captains' match"}
+        description="Who's playing, how many rounds, and what it decides."
+      >
+        <CaptainsMatchForm
+          key={match ? `edit-${highestRound > 0}` : "new"}
+          initial={match ?? undefined}
+          defaultPlayerAId={tournament.teamA?.captainId}
+          defaultPlayerBId={tournament.teamB?.captainId}
+          players={allPlayers}
+          playersLocked={highestRound > 0}
+          minRounds={highestRound}
+          submitting={submitting}
+          submitLabel={match ? "Save settings" : "Create captains' match"}
+          onSubmit={handleSubmit}
+        />
+      </AdminSection>
+
+      {match && summary && (
+        <>
+          <AdminSection
+            title="Rounds"
+            description="Open a round to enter or correct its card. Rounds count in order, so enter them in the order they were played."
+          >
+            <InfoNote className="mb-3">
+              Match:{" "}
+              <span className="font-semibold text-foreground">
+                {formatCaptainsMatchStatus(summary.state, firstName(match.playerAId), firstName(match.playerBId))}
+              </span>
+            </InfoNote>
+            <div className="space-y-2">
+              {Array.from({ length: summary.totalRounds }, (_, i) => i + 1).map((n) => {
+                const r = summary.rounds.find((round) => round.roundNumber === n);
+                const leading = (
+                  <div className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-lg bg-muted text-center">
+                    <span className="text-[0.5rem] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Rd
+                    </span>
+                    <span className="text-xs font-bold leading-none text-foreground">{n}</span>
+                  </div>
+                );
+                return (
+                  <NavRow
+                    key={n}
+                    to={`/admin/t/${tournamentId}/captains-match/round/${n}`}
+                    leading={leading}
+                    title={r ? roundTitle(match, r) : <span className="text-muted-foreground">Add scorecard</span>}
+                    subtitle={
+                      r
+                        ? [formatPlayedOn(r.round.playedOn), r.round.courseName].filter(Boolean).join(" · ") ||
+                          "No date or course"
+                        : undefined
+                    }
+                    badges={
+                      r && r.thru > 0 && !r.complete ? (
+                        <Badge variant="warning">thru {r.thru}</Badge>
+                      ) : r?.postMatch ? (
+                        <Badge variant="muted">after final</Badge>
+                      ) : null
+                    }
+                  />
+                );
+              })}
+            </div>
+          </AdminSection>
+
+          <AdminSection
+            title="Delete captains' match"
+            description="Removes the match and every round's card. Nothing else is affected — it never touches Cup points or stats."
+            danger
+          >
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleting}
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              Delete captains' match
+            </Button>
+          </AdminSection>
+
+          <ConfirmDialog
+            isOpen={confirmDelete}
+            title="Delete captains' match?"
+            confirmLabel="Delete"
+            danger
+            busy={deleting}
+            onConfirm={handleDelete}
+            onCancel={() => setConfirmDelete(false)}
+          >
+            This permanently deletes <strong>{match.name}</strong> and its{" "}
+            <strong>
+              {summary.rounds.length} round card{summary.rounds.length === 1 ? "" : "s"}
+            </strong>
+            .
+          </ConfirmDialog>
+        </>
+      )}
+    </AdminPage>
+  );
+}

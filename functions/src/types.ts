@@ -259,6 +259,38 @@ export interface SideEventTeamDoc {
 }
 
 // ============================================================================
+// CAPTAINS' MATCH
+// The pre-draft running singles match between the two captains, entered by an
+// admin after each round. Its own collection (captainsMatches/{tournamentId})
+// for the same reason side events have theirs: nothing that triggers on
+// `matches` can see it, so it awards no Cup points and records no stats.
+// ============================================================================
+
+/** One round's card. Arrays are hole-indexed (0 = hole 1), always length 18. */
+export interface CaptainsMatchRound {
+  roundNumber: number;             // 1..totalRounds; also its key in `rounds`
+  playedOn: string | null;         // "YYYY-MM-DD" wall-clock date
+  courseId: string | null;
+  courseName: string | null;       // copied from the course, or free text
+  tees: string | null;
+  grossA: (number | null)[];
+  grossB: (number | null)[];
+  strokesA: number[];              // 0|1 per hole, like strokesReceived
+  strokesB: number[];
+}
+
+/** captainsMatches/{tournamentId} — server-write only. */
+export interface CaptainsMatchDoc {
+  tournamentId: string;
+  name: string;
+  stakes: string;
+  playerAId: string;               // left, teamA color
+  playerBId: string;               // right, teamB color
+  totalRounds: number;
+  rounds: Record<string, CaptainsMatchRound>;
+}
+
+// ============================================================================
 // SKINS TYPES
 // Pre-computed skins results stored in rounds/{roundId}/skinsResults/computed
 // ============================================================================

@@ -189,6 +189,52 @@ export interface DeleteSideEventTeamRequest {
 }
 
 // ============================================================================
+// CAPTAINS' MATCH
+// The pre-draft running singles match between the captains. Its own collection,
+// apart from rounds/matches — see functions/src/callables/captainsMatchOps.ts.
+// ============================================================================
+
+export interface CaptainsMatchSettings {
+  name?: string;
+  stakes?: string;
+  playerAId?: string;
+  playerBId?: string;
+  totalRounds?: number;
+}
+
+/** Creates the tournament's match when it has none yet, otherwise updates it. */
+export interface SaveCaptainsMatchRequest extends CaptainsMatchSettings {
+  tournamentId: string;
+}
+
+export interface SaveCaptainsMatchResult extends AdminResult {
+  created: boolean;
+}
+
+/** Writes one round's whole card, replacing any earlier version of it. */
+export interface SaveCaptainsMatchRoundRequest {
+  tournamentId: string;
+  roundNumber: number;
+  playedOn: string | null;
+  courseId: string | null;
+  /** Used only when courseId is null; otherwise copied from the course. */
+  courseName: string | null;
+  grossA: (number | null)[];
+  grossB: (number | null)[];
+  strokesA: number[];
+  strokesB: number[];
+}
+
+export interface DeleteCaptainsMatchRoundRequest {
+  tournamentId: string;
+  roundNumber: number;
+}
+
+export interface DeleteCaptainsMatchRequest {
+  tournamentId: string;
+}
+
+// ============================================================================
 // MATCH
 // ============================================================================
 

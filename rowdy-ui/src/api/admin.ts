@@ -18,6 +18,8 @@ import type {
   CreateSideEventResult,
   CreateTournamentRequest,
   CreateTournamentResult,
+  DeleteCaptainsMatchRequest,
+  DeleteCaptainsMatchRoundRequest,
   DeleteCourseRequest,
   DeleteMatchRequest,
   DeletePlayerRequest,
@@ -35,6 +37,9 @@ import type {
   RecalculateAllStatsResult,
   RecalculateMatchStrokesRequest,
   RecalculateMatchStrokesResult,
+  SaveCaptainsMatchRequest,
+  SaveCaptainsMatchResult,
+  SaveCaptainsMatchRoundRequest,
   SaveSideEventTeamRequest,
   SaveSideEventTeamResult,
   SeedMatchRequest,
@@ -73,6 +78,12 @@ export const adminApi = {
   deleteSideEvent: call<DeleteSideEventRequest, DeleteSideEventResult>("deleteSideEvent"),
   saveSideEventTeam: call<SaveSideEventTeamRequest, SaveSideEventTeamResult>("saveSideEventTeam"),
   deleteSideEventTeam: call<DeleteSideEventTeamRequest, AdminResult>("deleteSideEventTeam"),
+
+  // Captains' match (pre-draft running singles match; no Cup points)
+  saveCaptainsMatch: call<SaveCaptainsMatchRequest, SaveCaptainsMatchResult>("saveCaptainsMatch"),
+  saveCaptainsMatchRound: call<SaveCaptainsMatchRoundRequest, AdminResult>("saveCaptainsMatchRound"),
+  deleteCaptainsMatchRound: call<DeleteCaptainsMatchRoundRequest, AdminResult>("deleteCaptainsMatchRound"),
+  deleteCaptainsMatch: call<DeleteCaptainsMatchRequest, AdminResult>("deleteCaptainsMatch"),
 
   // Match
   seedMatch: call<SeedMatchRequest, SeedMatchResult>("seedMatch"),

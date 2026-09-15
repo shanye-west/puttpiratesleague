@@ -6,9 +6,14 @@ export type MatchFlowGraphProps = {
   teamBColor: string;
   teamALogo?: string;
   teamBLogo?: string;
+  /**
+   * Margin before hole 1 (positive = Team A up). Zero for a normal match; the
+   * captains' match passes the running margin a round started from.
+   */
+  startMargin?: number;
 };
 
-export function MatchFlowGraph({ marginHistory, teamAColor, teamBColor, teamALogo, teamBLogo }: MatchFlowGraphProps) {
+export function MatchFlowGraph({ marginHistory, teamAColor, teamBColor, teamALogo, teamBLogo, startMargin = 0 }: MatchFlowGraphProps) {
   // Chart dimensions
   const height = 140;
   const padding = { top: 20, right: 8, bottom: 25, left: 12 }; // left padding for logos
@@ -21,11 +26,11 @@ export function MatchFlowGraph({ marginHistory, teamAColor, teamBColor, teamALog
 
   // Calculate max margin for y-axis scale (minimum 3 for reasonable scale)
   const maxMargin = numCompletedHoles > 0 
-    ? Math.max(3, Math.max(...marginHistory.map(Math.abs)))
-    : 3;
+    ? Math.max(3, Math.abs(startMargin), ...marginHistory.map(Math.abs))
+    : Math.max(3, Math.abs(startMargin));
 
-  // Data points: start at 0, then each hole's margin (only for completed holes)
-  const data = [0, ...marginHistory];
+  // Data points: start at the opening margin, then each hole's margin (only for completed holes)
+  const data = [startMargin, ...marginHistory];
 
   // Convert data point to SVG coordinates - always use totalHoles for spacing
   const getX = (holeIndex: number) => {

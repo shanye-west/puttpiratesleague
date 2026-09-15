@@ -110,6 +110,33 @@ export default function TournamentSettingsForm({
     [teamA, teamB]
   );
 
+  /**
+   * Captain / co-captain choices: this team's roster first, then anyone not on
+   * a roster yet. Captains are often named before the draft fills the rosters
+   * (they run it), and a saved pick has to stay listed or the select shows
+   * "None" while still holding the id.
+   */
+  const renderLeaderOptions = (rosterIds: string[], currentId: string) => {
+    const unrostered = allPlayers.filter(
+      (p) => !rosterIds.includes(p.id) && (!takenIds.has(p.id) || p.id === currentId)
+    );
+    return (
+      <>
+        <option value="">None</option>
+        {rosterIds.map((pid) => (
+          <option key={pid} value={pid}>{playerNameById[pid] ?? pid}</option>
+        ))}
+        {unrostered.length > 0 && (
+          <optgroup label="Not on this roster">
+            {unrostered.map((p) => (
+              <option key={p.id} value={p.id}>{p.displayName ?? p.id}</option>
+            ))}
+          </optgroup>
+        )}
+      </>
+    );
+  };
+
   const updateTeam = (key: TeamKey, patch: Partial<TeamFormState>) => {
     const setter = key === "teamA" ? setTeamA : setTeamB;
     setter((prev) => ({ ...prev, ...patch }));
@@ -265,10 +292,7 @@ export default function TournamentSettingsForm({
               onChange={(e) => updateTeam(key, { captainId: e.target.value })}
               className={inputClass}
             >
-              <option value="">None</option>
-              {ids.map((pid) => (
-                <option key={pid} value={pid}>{playerNameById[pid] ?? pid}</option>
-              ))}
+              {renderLeaderOptions(ids, form.captainId)}
             </select>
           </Field>
           <Field label="Co-captain">
@@ -277,10 +301,7 @@ export default function TournamentSettingsForm({
               onChange={(e) => updateTeam(key, { coCaptainId: e.target.value })}
               className={inputClass}
             >
-              <option value="">None</option>
-              {ids.map((pid) => (
-                <option key={pid} value={pid}>{playerNameById[pid] ?? pid}</option>
-              ))}
+              {renderLeaderOptions(ids, form.coCaptainId)}
             </select>
           </Field>
         </div>

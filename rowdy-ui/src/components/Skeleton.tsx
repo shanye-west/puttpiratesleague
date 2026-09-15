@@ -213,4 +213,36 @@ export const RoundPageSkeleton = memo(function RoundPageSkeleton() {
   );
 });
 
+/** Skeleton for the captains' match (status hero + season graph + rounds) */
+export const CaptainsMatchSkeleton = memo(function CaptainsMatchSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="card space-y-4 p-4">
+        <Skeleton width={140} height={14} className="mx-auto" />
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+          <div className="flex flex-col items-center gap-2">
+            <Skeleton width={72} height={72} rounded="full" />
+            <Skeleton width={64} height={14} />
+          </div>
+          <Skeleton width={96} height={36} />
+          <div className="flex flex-col items-center gap-2">
+            <Skeleton width={72} height={72} rounded="full" />
+            <Skeleton width={64} height={14} />
+          </div>
+        </div>
+        <Skeleton width={180} height={12} className="mx-auto" />
+      </div>
+      <div className="card p-4">
+        <Skeleton width="100%" height={150} rounded="lg" />
+      </div>
+      <div className="space-y-3">
+        <Skeleton width={80} height={12} className="ml-3" />
+        {[0, 1, 2].map((i) => (
+          <MatchCardSkeleton key={i} />
+        ))}
+      </div>
+    </div>
+  );
+});
+
 export default Skeleton;

@@ -110,6 +110,35 @@ export default function TournamentHome() {
         </AdminSection>
       )}
 
+      {/* Offered on a tournament that already has one, or one still being set
+          up (no rounds yet) — not on every past Cup. */}
+      {(tournament.hasCaptainsMatch || rounds.length === 0) && (
+        <AdminSection
+          title="Captains' match"
+          description="The pre-draft running singles match between the captains, scored off the app. Enter each round's card here — it awards no Cup points and records no stats."
+        >
+          {tournament.hasCaptainsMatch ? (
+            <NavRow
+              to={`/admin/t/${tournamentId}/captains-match`}
+              leading={
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-[0.6rem] font-bold uppercase tracking-wider text-muted-foreground">
+                  vs
+                </div>
+              }
+              title="Captains' Match"
+              subtitle="Players, rounds and scorecards"
+            />
+          ) : (
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/admin/t/${tournamentId}/captains-match`}>
+                <Plus className="h-4 w-4" />
+                Set up
+              </Link>
+            </Button>
+          )}
+        </AdminSection>
+      )}
+
       <AdminSection
         title="Rounds"
         description="The lock freezes score entry for a whole round. Open a round for its matches, pairings draft, and recap."
