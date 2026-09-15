@@ -106,6 +106,14 @@ describe("validateCaptainsMatchSettings", () => {
     expect(validateCaptainsMatchSettings({ playerAId: "pA", playerBId: "pB" }, 0).ok).toBe(true);
   });
 
+  it("accepts a trimmed subtitle and caps its length", () => {
+    expect(validateCaptainsMatchSettings({ subtitle: "  Year-long battle  " }, 0).settings).toEqual({
+      subtitle: "Year-long battle",
+    });
+    expect(validateCaptainsMatchSettings({ subtitle: "" }, 0).ok).toBe(true);
+    expect(validateCaptainsMatchSettings({ subtitle: "x".repeat(81) }, 0).ok).toBe(false);
+  });
+
   it("rejects unknown keys and an empty name", () => {
     expect(validateCaptainsMatchSettings({ rounds: {} }, 0).ok).toBe(false);
     expect(validateCaptainsMatchSettings({ name: "  " }, 0).ok).toBe(false);

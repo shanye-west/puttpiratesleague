@@ -54,7 +54,7 @@ async function assertPlayersExist(playerIds: string[]): Promise<void> {
  *
  * Data payload:
  * - tournamentId: string
- * - name?, stakes?, playerAId?, playerBId?, totalRounds?
+ * - name?, subtitle?, stakes?, playerAId?, playerBId?, totalRounds?
  */
 export const saveCaptainsMatch = onCall(async (request) => {
   await requireAdmin(request, "saveCaptainsMatch", { maxCalls: 20, windowSeconds: 60 });
@@ -94,6 +94,7 @@ export const saveCaptainsMatch = onCall(async (request) => {
     batch.set(ref, {
       tournamentId,
       name: settings.name ?? DEFAULT_NAME,
+      subtitle: settings.subtitle ?? "",
       stakes: settings.stakes ?? "",
       playerAId,
       playerBId,

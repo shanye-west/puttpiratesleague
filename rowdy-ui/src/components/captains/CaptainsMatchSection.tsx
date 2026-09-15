@@ -208,6 +208,9 @@ function CaptainsMatchSection({ tournament }: CaptainsMatchSectionProps) {
               <div className="text-[1.0rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 {match.name}
               </div>
+              {match.subtitle && (
+                <div className="text-sm font-semibold text-foreground">{match.subtitle}</div>
+              )}
               {match.stakes && <div className="text-xs text-muted-foreground">{match.stakes}</div>}
             </div>
 

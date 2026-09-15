@@ -362,6 +362,8 @@ export type CaptainsMatchDoc = {
   id: string;
   tournamentId: string;
   name: string;
+  /** Tagline under the name on the home page. */
+  subtitle?: string;
   /** What the match decides, shown with the status. */
   stakes?: string;
   /** Shown on the left, in the teamA color. */

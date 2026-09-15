@@ -83,7 +83,7 @@ Most collections are **public-read**, but the group's private data is **signed-i
 | `rounds/{id}/skinsResults/computed` | Computed skins pots/winners (subcollection) |
 | `sideEvents/{id}` | An optional, for-fun game (the 3-man scramble): `name`, `courseId`, `nine` (`front`/`back`), `payouts[]`, `locked`, `hidden`. **Awards no Cup points and records no stats** |
 | `sideEventTeams/{id}` | One free-form team in a side event: `sideEventId`, `teamNumber`, `playerIds[]` (any mix of rosters), `authorizedUids[]`, `locked`, `holes.{N}.gross` |
-| `captainsMatches/{tournamentId}` | The pre-draft captains' match (running singles match play between the two captains): `name`, `stakes`, `playerAId`/`playerBId`, `totalRounds`, and every round's card embedded as `rounds.{n}` (`playedOn`, `courseId`/`courseName`/`tees`, `grossA`/`grossB[18]`, `strokesA`/`strokesB[18]`). Admin-entered; **awards no Cup points and records no stats**. `tournament.hasCaptainsMatch` gates the listener — see "Captains' match" below |
+| `captainsMatches/{tournamentId}` | The pre-draft captains' match (running singles match play between the two captains): `name`, `subtitle`, `stakes`, `playerAId`/`playerBId`, `totalRounds`, and every round's card embedded as `rounds.{n}` (`playedOn`, `courseId`/`courseName`/`tees`, `grossA`/`grossB[18]`, `strokesA`/`strokesB[18]`). Admin-entered; **awards no Cup points and records no stats**. `tournament.hasCaptainsMatch` gates the listener — see "Captains' match" below |
 
 ## Match formats & scoring
 

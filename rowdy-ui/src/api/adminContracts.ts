@@ -196,6 +196,7 @@ export interface DeleteSideEventTeamRequest {
 
 export interface CaptainsMatchSettings {
   name?: string;
+  subtitle?: string;
   stakes?: string;
   playerAId?: string;
   playerBId?: string;

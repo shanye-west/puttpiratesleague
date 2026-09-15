@@ -283,6 +283,7 @@ export interface CaptainsMatchRound {
 export interface CaptainsMatchDoc {
   tournamentId: string;
   name: string;
+  subtitle?: string;               // tagline under the name on the home page
   stakes: string;
   playerAId: string;               // left, teamA color
   playerBId: string;               // right, teamB color

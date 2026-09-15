@@ -14,11 +14,13 @@ export const HOLES_PER_ROUND = 18;
 export const DEFAULT_TOTAL_ROUNDS = 20;
 export const MAX_TOTAL_ROUNDS = 50;
 const MAX_NAME_LENGTH = 60;
+const MAX_SUBTITLE_LENGTH = 80;
 const MAX_STAKES_LENGTH = 140;
 const MAX_COURSE_NAME_LENGTH = 60;
 
 export interface CaptainsMatchSettingsInput {
   name?: string;
+  subtitle?: string;
   stakes?: string;
   playerAId?: string;
   playerBId?: string;
@@ -97,6 +99,12 @@ export function validateCaptainsMatchSettings(
       const name = typeof value === "string" ? value.trim() : "";
       if (!name || name.length > MAX_NAME_LENGTH) errors.push(`name must be 1-${MAX_NAME_LENGTH} characters`);
       else settings.name = name;
+    } else if (key === "subtitle") {
+      if (typeof value !== "string" || value.trim().length > MAX_SUBTITLE_LENGTH) {
+        errors.push(`subtitle must be text of at most ${MAX_SUBTITLE_LENGTH} characters`);
+      } else {
+        settings.subtitle = value.trim();
+      }
     } else if (key === "stakes") {
       if (typeof value !== "string" || value.trim().length > MAX_STAKES_LENGTH) {
         errors.push(`stakes must be text of at most ${MAX_STAKES_LENGTH} characters`);

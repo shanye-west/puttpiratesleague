@@ -226,7 +226,7 @@ describe("summarizeCaptainsMatch", () => {
   });
 });
 
-describe("full handicaps (the real round 1 card)", () => {
+describe("full handicaps (the real cards)", () => {
   // Seven Hills (Blue), 2026-09-07. The captains' match plays off FULL course
   // handicaps — Jared 6, Adam 10, each on their own hardest holes — rather than
   // spinning down to the lower player as Cup singles do.
@@ -256,6 +256,30 @@ describe("full handicaps (the real round 1 card)", () => {
     expect([r.holesWonA, r.holesWonB, r.halved]).toEqual([8, 4, 6]);
     expect(s.state).toMatchObject({ kind: "live", leader: "A", margin: 4 });
     expect(s.peakA).toEqual({ margin: 6, x: 12 });
+  });
+
+  it("carries into round 2 at Temecula Creek: Adam wins it 10–5 and leads 1 UP", () => {
+    // Creek/Stonehouse (Black), 2026-09-15: Jared off 8, Adam off 13.
+    const temeculaCreek: HoleInfo[] = [7, 17, 9, 13, 1, 11, 15, 5, 3, 8, 14, 4, 16, 12, 2, 10, 18, 6].map(
+      (hcpIndex, i) => ({ number: i + 1, par: 4, hcpIndex })
+    );
+    const round2: CaptainsMatchRound = {
+      roundNumber: 2,
+      playedOn: "2026-09-15",
+      courseId: "TCI-CreekStonehouse-Black",
+      courseName: "TCI Creek/Stonehouse",
+      tees: "Black",
+      grossA: [4, 5, 5, 5, 4, 5, 4, 5, 4, 5, 5, 5, 3, 4, 6, 4, 3, 6],
+      grossB: [5, 3, 5, 5, 5, 5, 2, 5, 5, 4, 4, 5, 5, 4, 5, 4, 5, 6],
+      strokesA: allocateStrokes(8, temeculaCreek) ?? [],
+      strokesB: allocateStrokes(13, temeculaCreek) ?? [],
+    };
+    const s = season(20, round1, round2);
+    const r2 = s.rounds[1];
+    expect([r2.holesWonA, r2.holesWonB, r2.halved]).toEqual([5, 10, 3]);
+    expect([r2.startMargin, r2.endMargin]).toEqual([4, -1]);
+    expect(s.state).toMatchObject({ kind: "live", leader: "B", margin: 1, toPlay: 324 });
+    expect(s.peakB).toEqual({ margin: 2, x: 34 });
   });
 });
 

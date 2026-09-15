@@ -29,8 +29,8 @@ interface CaptainsMatchFormProps {
 
 /**
  * Create/edit form for a tournament's captains' match: the two players, how
- * many rounds, and what it decides. Round cards are entered separately, one
- * page per round.
+ * many rounds, and how it's billed on the home page. Round cards are entered
+ * separately, one page per round.
  */
 export default function CaptainsMatchForm({
   initial,
@@ -44,6 +44,7 @@ export default function CaptainsMatchForm({
   onSubmit,
 }: CaptainsMatchFormProps) {
   const [name, setName] = useState(initial?.name ?? DEFAULT_NAME);
+  const [subtitle, setSubtitle] = useState(initial?.subtitle ?? "");
   const [stakes, setStakes] = useState(initial ? initial.stakes ?? "" : DEFAULT_STAKES);
   const [playerAId, setPlayerAId] = useState(initial?.playerAId ?? defaultPlayerAId ?? "");
   const [playerBId, setPlayerBId] = useState(initial?.playerBId ?? defaultPlayerBId ?? "");
@@ -70,6 +71,7 @@ export default function CaptainsMatchForm({
     setError(null);
     onSubmit({
       name: name.trim() || DEFAULT_NAME,
+      subtitle: subtitle.trim(),
       stakes: stakes.trim(),
       // The server refuses a player change once a round has a card, so don't send one.
       ...(playersLocked ? {} : { playerAId, playerBId }),
@@ -110,7 +112,17 @@ export default function CaptainsMatchForm({
         />
       </Field>
 
-      <Field label="What it decides" optional hint="A line under the name on the home page.">
+      <Field label="Subtitle" optional hint="A tagline right under the name.">
+        <input
+          type="text"
+          value={subtitle}
+          onChange={(e) => setSubtitle(e.target.value)}
+          maxLength={80}
+          className={inputClass}
+        />
+      </Field>
+
+      <Field label="What it decides" optional hint="A smaller line under the subtitle.">
         <input
           type="text"
           value={stakes}
