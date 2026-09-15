@@ -119,12 +119,11 @@ function CaptainsMatchRoundComponent() {
   const dayText =
     round.thru === 0 ? "No scores entered yet" : dayLeader ? `${firstName(dayLeader)} won the round` : "Round halved";
 
-  const strokesText = [
-    round.strokesGivenA > 0 ? `${firstName("A")} got ${round.strokesGivenA} stroke${round.strokesGivenA === 1 ? "" : "s"}` : null,
-    round.strokesGivenB > 0 ? `${firstName("B")} got ${round.strokesGivenB} stroke${round.strokesGivenB === 1 ? "" : "s"}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ") || "No strokes";
+  // Both play off their full course handicaps, so usually both get strokes.
+  const strokesText =
+    round.strokesGivenA > 0 || round.strokesGivenB > 0
+      ? `Strokes: ${firstName("A")} ${round.strokesGivenA} · ${firstName("B")} ${round.strokesGivenB}`
+      : "No strokes";
 
   const details = [formatPlayedOn(round.round.playedOn), round.round.courseName, round.round.tees]
     .filter(Boolean)

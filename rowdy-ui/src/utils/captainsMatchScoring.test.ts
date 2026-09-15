@@ -226,6 +226,39 @@ describe("summarizeCaptainsMatch", () => {
   });
 });
 
+describe("full handicaps (the real round 1 card)", () => {
+  // Seven Hills (Blue), 2026-09-07. The captains' match plays off FULL course
+  // handicaps — Jared 6, Adam 10, each on their own hardest holes — rather than
+  // spinning down to the lower player as Cup singles do.
+  const sevenHills: HoleInfo[] = [5, 15, 3, 9, 17, 7, 13, 1, 11, 6, 12, 16, 4, 2, 10, 18, 8, 14].map(
+    (hcpIndex, i) => ({ number: i + 1, par: 4, hcpIndex })
+  );
+  const round1: CaptainsMatchRound = {
+    roundNumber: 1,
+    playedOn: "2026-09-07",
+    courseId: "sevenHills-Blue",
+    courseName: "Seven Hills Golf Club",
+    tees: "Blue",
+    grossA: [4, 3, 6, 4, 3, 5, 4, 4, 4, 5, 6, 4, 5, 5, 5, 4, 5, 7],
+    grossB: [5, 4, 6, 7, 4, 5, 4, 5, 6, 5, 6, 5, 4, 7, 6, 3, 5, 7],
+    strokesA: allocateStrokes(6, sevenHills) ?? [],
+    strokesB: allocateStrokes(10, sevenHills) ?? [],
+  };
+
+  it("places each player's own strokes on the card's dotted holes", () => {
+    expect(round1.strokesA).toEqual([1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0]);
+    expect(round1.strokesB).toEqual([1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0]);
+  });
+
+  it("scores it Jared 4 UP, 8 holes to 4", () => {
+    const s = season(20, round1);
+    const [r] = s.rounds;
+    expect([r.holesWonA, r.holesWonB, r.halved]).toEqual([8, 4, 6]);
+    expect(s.state).toMatchObject({ kind: "live", leader: "A", margin: 4 });
+    expect(s.peakA).toEqual({ margin: 6, x: 12 });
+  });
+});
+
 describe("roundFlowHistory", () => {
   it("starts from the round's opening margin and carries over blank holes", () => {
     const s = season(20, card(1, "AA" + H(16)), card(2, "A.B" + ".".repeat(15)));

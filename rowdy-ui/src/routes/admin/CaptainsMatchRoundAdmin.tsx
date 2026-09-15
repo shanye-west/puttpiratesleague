@@ -28,12 +28,8 @@ import {
 } from "../../utils/captainsMatchScoring";
 import type { CaptainsMatchDoc, CaptainsMatchRound, CourseDoc, TournamentDoc } from "../../types";
 
-type StrokeRecipient = CaptainsSide | "none";
-
 /** Course select value for a course that isn't in the app. */
 const OTHER_COURSE = "__other__";
-
-const zeros = () => Array<number>(HOLES_PER_ROUND).fill(0);
 
 /** Stored scores → input strings ("" for blank). */
 function toInputs(values: (number | null)[] | undefined): string[] {
@@ -183,16 +179,16 @@ function RoundCardEditor({
   const [grossB, setGrossB] = useState(() => toInputs(existing?.grossB));
   const [strokesA, setStrokesA] = useState(() => toStrokes(existing?.strokesA));
   const [strokesB, setStrokesB] = useState(() => toStrokes(existing?.strokesB));
-  // Helper inputs for placing strokes, seeded from the saved card. The per-hole
-  // stroke arrays above stay the source of truth — the grid's dots edit them.
-  const [recipient, setRecipient] = useState<StrokeRecipient>(() => {
-    const givenA = countStrokes(toStrokes(existing?.strokesA));
-    const givenB = countStrokes(toStrokes(existing?.strokesB));
-    if (givenA === 0 && givenB === 0) return "none";
-    return givenA > givenB ? "A" : "B";
-  });
-  const [strokeCount, setStrokeCount] = useState(() =>
-    String(Math.max(countStrokes(toStrokes(existing?.strokesA)), countStrokes(toStrokes(existing?.strokesB))))
+  // Each player's course handicap for the day. The captains' match is played
+  // off FULL handicaps — no spin-down to the lower player like Cup singles — so
+  // each number places that player's own strokes. Seeded from the saved card;
+  // the per-hole stroke arrays above stay the source of truth (the grid's dots
+  // edit them).
+  const [handicapA, setHandicapA] = useState(() =>
+    existing ? String(countStrokes(toStrokes(existing.strokesA))) : ""
+  );
+  const [handicapB, setHandicapB] = useState(() =>
+    existing ? String(countStrokes(toStrokes(existing.strokesB))) : ""
   );
 
   const [saving, setSaving] = useState(false);
@@ -212,37 +208,27 @@ function RoundCardEditor({
   const canPlaceStrokes = allocateStrokes(0, selectedCourse?.holes) !== null;
 
   /**
-   * Put the strokes on the course's hardest holes. Runs only when the recipient,
-   * count or course changes — never on load — so hand-ticked holes on a saved
-   * card survive until the admin asks for a re-placement.
+   * Put one player's strokes on the course's hardest holes. Runs only when a
+   * handicap or the course changes — never on load — so hand-ticked holes on a
+   * saved card survive until the admin asks for a re-placement.
    */
-  const placeStrokes = (nextRecipient: StrokeRecipient, nextCount: string, course: CourseDoc | null) => {
-    if (nextRecipient === "none") {
-      setStrokesA(zeros());
-      setStrokesB(zeros());
-      return;
-    }
-    const placed = allocateStrokes(Number(nextCount), course?.holes);
+  const placeStrokes = (side: CaptainsSide, handicap: string, course: CourseDoc | null) => {
+    const placed = allocateStrokes(Number(handicap) || 0, course?.holes);
     if (!placed) return; // no usable handicap indexes — the admin ticks holes by hand
-    setStrokesA(nextRecipient === "A" ? placed : zeros());
-    setStrokesB(nextRecipient === "B" ? placed : zeros());
+    (side === "A" ? setStrokesA : setStrokesB)(placed);
   };
 
-  const handleRecipientChange = (next: StrokeRecipient) => {
-    setRecipient(next);
-    placeStrokes(next, strokeCount, selectedCourse);
-  };
-
-  const handleCountChange = (next: string) => {
-    setStrokeCount(next);
-    placeStrokes(recipient, next, selectedCourse);
+  const handleHandicapChange = (side: CaptainsSide, value: string) => {
+    const digits = value.replace(/[^0-9]/g, "").slice(0, 2);
+    (side === "A" ? setHandicapA : setHandicapB)(digits);
+    placeStrokes(side, digits, selectedCourse);
   };
 
   const handleCourseChange = (next: string) => {
     setCourseChoice(next);
-    if (recipient !== "none") {
-      placeStrokes(recipient, strokeCount, courses.find((c) => c.id === next) ?? null);
-    }
+    const course = courses.find((c) => c.id === next) ?? null;
+    placeStrokes("A", handicapA, course);
+    placeStrokes("B", handicapB, course);
   };
 
   const toggleStroke = (side: CaptainsSide, i: number) => {
@@ -425,7 +411,7 @@ function RoundCardEditor({
       breadcrumbs={breadcrumbs}
       eyebrow={match.name}
       title={`Round ${roundNumber}`}
-      description={`Enter the card as it was played: both gross scores on every hole, plus any handicap strokes. Lower net score wins the hole${
+      description={`Enter the card as it was played: both gross scores on every hole, plus each player's handicap strokes. Lower net score wins the hole${
         roundNumber < match.totalRounds ? `, and the margin carries into round ${roundNumber + 1}` : ""
       }.`}
       badges={existing ? <Badge variant="success">saved</Badge> : <Badge variant="muted">new card</Badge>}
@@ -489,34 +475,28 @@ function RoundCardEditor({
 
       <AdminSection
         title="Handicap strokes"
-        description="Pick who gets strokes and how many — they go on the course's hardest holes. Tap a dot in the card below to change any hole by hand."
+        description="Full handicaps: each player gets strokes off their own course handicap for the day — no spin-down to the lower player. They land on the course's hardest holes; tap a dot in the card below to change any hole by hand."
       >
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Gets strokes">
-            <select
-              value={recipient}
-              onChange={(e) => handleRecipientChange(e.target.value as StrokeRecipient)}
-              className={inputClass}
+          {(["A", "B"] as const).map((side) => (
+            <Field
+              key={side}
+              label={`${side === "A" ? nameA : nameB}'s strokes`}
+              hint="Course handicap for the day"
             >
-              <option value="none">Nobody</option>
-              <option value="A">{nameA}</option>
-              <option value="B">{nameB}</option>
-            </select>
-          </Field>
-          <Field label="How many">
-            <input
-              type="number"
-              min={0}
-              max={HOLES_PER_ROUND}
-              step={1}
-              value={strokeCount}
-              onChange={(e) => handleCountChange(e.target.value)}
-              disabled={recipient === "none"}
-              className={inputClass}
-            />
-          </Field>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={side === "A" ? handicapA : handicapB}
+                onChange={(e) => handleHandicapChange(side, e.target.value)}
+                placeholder="0"
+                aria-label={`${side === "A" ? nameA : nameB}'s course handicap`}
+                className={inputClass}
+              />
+            </Field>
+          ))}
         </div>
-        {recipient !== "none" && !canPlaceStrokes && (
+        {!canPlaceStrokes && (Number(handicapA) > 0 || Number(handicapB) > 0) && (
           <InfoNote className="mt-3">
             {selectedCourse ? "This course has no handicap indexes" : "Without an app course there are no handicap indexes"}{" "}
             — tap the stroke dots in the card to mark the holes by hand.
