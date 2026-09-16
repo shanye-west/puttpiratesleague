@@ -13,10 +13,13 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { useAdminTournament } from "../../contexts/AdminTournamentContext";
 import { adminApi } from "../../api/admin";
+import { betsApi } from "../../api/bets";
 import { getErrorMessage } from "../../api/errors";
 import {
   formatCaptainsMatchStatus,
   formatPlayedOn,
+  formatRoundRanges,
+  missingRoundNumbers,
   summarizeCaptainsMatch,
   type CaptainsRoundSummary,
 } from "../../utils/captainsMatchScoring";
@@ -41,6 +44,10 @@ export default function CaptainsMatchAdmin() {
   const [success, setSuccess] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [bettingBusy, setBettingBusy] = useState(false);
+  const [settling, setSettling] = useState(false);
+  const [confirmSettleSeason, setConfirmSettleSeason] = useState(false);
+  const [settleRound, setSettleRound] = useState<number | null>(null);
 
   // The players usually aren't on a roster yet (the captains are known before
   // the draft), so the pickers list everyone.
@@ -93,6 +100,37 @@ export default function CaptainsMatchAdmin() {
     }
   };
 
+  const toggleBetting = async (open: boolean) => {
+    setError(null);
+    setSuccess(null);
+    setBettingBusy(true);
+    try {
+      await adminApi.saveCaptainsMatch({ tournamentId, bettingOpen: open });
+      setSuccess(open ? "Betting is open." : "Betting is closed.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to change the betting switch"));
+    } finally {
+      setBettingBusy(false);
+    }
+  };
+
+  const settleBets = async (scope: "round" | "season", roundNumber?: number) => {
+    setError(null);
+    setSuccess(null);
+    setSettling(true);
+    try {
+      const res = await betsApi.settleCaptainsMatchBets({ tournamentId, scope, roundNumber });
+      const what = scope === "round" ? `round ${roundNumber}` : "season";
+      setSuccess(`Settled ${res.settledCount} ${what} bet${res.settledCount === 1 ? "" : "s"}.`);
+    } catch (err) {
+      setError(getErrorMessage(err, "Couldn't settle those bets"));
+    } finally {
+      setSettling(false);
+      setConfirmSettleSeason(false);
+      setSettleRound(null);
+    }
+  };
+
   const handleDelete = async () => {
     setError(null);
     setDeleting(true);
@@ -134,6 +172,7 @@ export default function CaptainsMatchAdmin() {
   }
 
   const firstName = (pid: string) => (nameById[pid] ?? pid).trim().split(/\s+/)[0];
+  const missing = summary ? missingRoundNumbers(summary) : [];
   const highestRound = summary?.rounds.reduce((max, r) => Math.max(max, r.roundNumber), 0) ?? 0;
 
   const roundTitle = (m: CaptainsMatchDoc, r: CaptainsRoundSummary) => {
@@ -232,6 +271,83 @@ export default function CaptainsMatchAdmin() {
           </AdminSection>
 
           <AdminSection
+            title="Betting"
+            description="Opens the captains'-match markets in the Sportsbook and settles them. Bets never settle on their own — enter a card, check it, then settle, so a typo can't pay out."
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground">
+                    Betting is {match.bettingOpen ? "open" : "closed"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Season markets (outright winner, decided-by-round, rounds won) are bettable only while this is
+                    on. Each round's own market closes by itself once that card is entered.
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant={match.bettingOpen ? "outline" : "default"}
+                  disabled={bettingBusy}
+                  onClick={() => void toggleBetting(!match.bettingOpen)}
+                >
+                  {bettingBusy ? "Saving…" : match.bettingOpen ? "Close betting" : "Open betting"}
+                </Button>
+              </div>
+
+              {!tournament.sportsbookEnabled && (
+                <InfoNote>
+                  The Sportsbook is switched off for this tournament, so nobody can see these markets yet. Turn it on
+                  under Settings → Setup.
+                </InfoNote>
+              )}
+
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Settle a round
+                </div>
+                {summary.rounds.filter((r) => r.thru > 0).length === 0 ? (
+                  <InfoNote>No cards entered yet — there's nothing to settle.</InfoNote>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {summary.rounds
+                      .filter((r) => r.thru > 0)
+                      .map((r) => (
+                        <Button
+                          key={r.roundNumber}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={settling}
+                          onClick={() => setSettleRound(r.roundNumber)}
+                        >
+                          Settle round {r.roundNumber}
+                        </Button>
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Settle the season
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={settling}
+                  onClick={() => setConfirmSettleSeason(true)}
+                >
+                  {settling ? "Settling…" : "Settle season bets"}
+                </Button>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Resolves the outright winner plus the decided-by-round and rounds-won over/unders.
+                </p>
+              </div>
+            </div>
+          </AdminSection>
+
+          <AdminSection
             title="Delete captains' match"
             description="Removes the match and every round's card. Nothing else is affected — it never touches Cup points or stats."
             danger
@@ -246,6 +362,44 @@ export default function CaptainsMatchAdmin() {
               Delete captains' match
             </Button>
           </AdminSection>
+
+          <ConfirmDialog
+            isOpen={settleRound !== null}
+            title={`Settle round ${settleRound} bets?`}
+            confirmLabel="Settle"
+            busy={settling}
+            onConfirm={() => void settleBets("round", settleRound ?? undefined)}
+            onCancel={() => setSettleRound(null)}
+          >
+            Pays out every locked-in bet on round {settleRound} from that card's result. Check the scorecard first —
+            settling can't be undone.
+          </ConfirmDialog>
+
+          <ConfirmDialog
+            isOpen={confirmSettleSeason}
+            title="Settle season bets?"
+            confirmLabel="Settle"
+            busy={settling}
+            onConfirm={() => void settleBets("season")}
+            onCancel={() => setConfirmSettleSeason(false)}
+          >
+            {summary.state.kind !== "won" && summary.state.kind !== "halved" ? (
+              <>
+                <strong>The match isn't decided yet.</strong> Outright-winner bets will be skipped, and the
+                decided-by-round and rounds-won lines will settle against the season <em>so far</em> — which is
+                almost certainly not what you want. Wait until the season is over.
+              </>
+            ) : missing.length > 0 ? (
+              <>
+                <strong>
+                  Round{missing.length === 1 ? "" : "s"} {formatRoundRanges(missing)} still {missing.length === 1 ? "has" : "have"} no card.
+                </strong>{" "}
+                The rounds-won line counts only the rounds entered, so settle once you're sure nothing else is coming.
+              </>
+            ) : (
+              <>Pays out the outright winner plus both season over/unders. This can't be undone.</>
+            )}
+          </ConfirmDialog>
 
           <ConfirmDialog
             isOpen={confirmDelete}

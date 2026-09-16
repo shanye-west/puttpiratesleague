@@ -203,6 +203,8 @@ export interface CaptainsMatchSettings {
   playerAId?: string;
   playerBId?: string;
   totalRounds?: number;
+  /** Master switch for the captains'-match sportsbook markets. */
+  bettingOpen?: boolean;
 }
 
 /** Creates the tournament's match when it has none yet, otherwise updates it. */
@@ -485,6 +487,8 @@ export interface CreateBetOfferRequest {
   subjectAId?: string;
   /** playerMatchup: player backed by the teamB side. */
   subjectBId?: string;
+  /** Required when market === "captainsRound": which round is being bet on. */
+  captainsRoundNumber?: number;
   /** Team to win (team / playerMatchup markets) or "over"/"under" (overUnder). */
   side: BetSide;
   /** Even-money stake each side risks. */
@@ -524,6 +528,23 @@ export interface SettlePlayerFuturesRequest {
 export interface SettlePlayerFuturesResult extends AdminResult {
   settledCount: number;
 }
+
+/**
+ * Admin: settle the captains'-match markets. "round" resolves one round's
+ * winner bets; "season" resolves the overall winner plus the clinch-round and
+ * rounds-won over/unders.
+ */
+export interface SettleCaptainsMatchBetsRequest {
+  tournamentId: string;
+  scope: "round" | "season";
+  /** Required when scope === "round". */
+  roundNumber?: number;
+}
+
+export interface SettleCaptainsMatchBetsResult extends AdminResult {
+  settledCount: number;
+}
+
 
 /** Debtor records a payment that clears part of a head-to-head tab. */
 export interface RecordSettlementRequest {

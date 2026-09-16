@@ -14,7 +14,13 @@
 import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { requireAdmin, requirePlayer } from "../helpers/adminAuth.js";
-import { settleCupFutureBet, settleOverUnderBet, settlePlayerMatchupBet } from "../scoring/betSettlement.js";
+import {
+  settleCupFutureBet,
+  settleOverUnderBet,
+  settlePlayerMatchupBet,
+  settleRoundBet,
+} from "../scoring/betSettlement.js";
+import { summarizeCaptainsSeason } from "../helpers/captainsMatch.js";
 import { notify } from "../messaging/notify.js";
 import { teeTimeToMillis } from "./teeTime.js";
 import type { BetDoc, BetMarket, BetOverUnderMetric, BetSide } from "../types.js";
@@ -34,6 +40,9 @@ const MAX_BET_AMOUNT = 1_000_000;
 /** Over/under metrics that read from a single match (gated like a match bet). */
 const MATCH_SCOPED_METRICS: BetOverUnderMetric[] = ["matchHolesPlayed", "matchMargin"];
 
+/** Over/under metrics that read from the captains' match (gated on bettingOpen). */
+const CAPTAINS_SCOPED_METRICS: BetOverUnderMetric[] = ["captainsClinchRound", "captainsRoundsWon"];
+
 function isTeamSide(v: unknown): v is "teamA" | "teamB" {
   return v === "teamA" || v === "teamB";
 }
@@ -43,7 +52,21 @@ function isOverUnderSide(v: unknown): v is "over" | "under" {
 }
 
 function isMarket(v: unknown): v is BetMarket {
-  return v === "match" || v === "round" || v === "cupFuture" || v === "overUnder" || v === "playerMatchup";
+  return (
+    v === "match" ||
+    v === "round" ||
+    v === "cupFuture" ||
+    v === "overUnder" ||
+    v === "playerMatchup" ||
+    v === "captainsMatch" ||
+    v === "captainsRound"
+  );
+}
+
+/** The captains'-match markets — gated on the match doc, not on rounds/matches. */
+function isCaptainsMarket(market: BetMarket, metric?: BetOverUnderMetric): boolean {
+  if (market === "captainsMatch" || market === "captainsRound") return true;
+  return market === "overUnder" && !!metric && CAPTAINS_SCOPED_METRICS.includes(metric);
 }
 
 function isMetric(v: unknown): v is BetOverUnderMetric {
@@ -51,7 +74,9 @@ function isMetric(v: unknown): v is BetOverUnderMetric {
     v === "matchHolesPlayed" ||
     v === "matchMargin" ||
     v === "playerTournamentPoints" ||
-    v === "playerTournamentWins"
+    v === "playerTournamentWins" ||
+    v === "captainsClinchRound" ||
+    v === "captainsRoundsWon"
   );
 }
 
@@ -135,17 +160,53 @@ async function isMatchClosed(matchId: string | undefined): Promise<boolean> {
   return matchStartedPlay(m) || m.locked === true;
 }
 
+/** The captains' match doc for a tournament, or null when it has none. */
+async function loadCaptainsMatch(tournamentId: string): Promise<FirebaseFirestore.DocumentData | null> {
+  const snap = await db().collection("captainsMatches").doc(tournamentId).get();
+  return snap.exists ? snap.data()! : null;
+}
+
+/** True once a captains' round has any score entered — its market closes then. */
+function captainsRoundPlayed(match: FirebaseFirestore.DocumentData, roundNumber: number): boolean {
+  const round = match.rounds?.[String(roundNumber)];
+  if (!round) return false;
+  const grossA = Array.isArray(round.grossA) ? round.grossA : [];
+  const grossB = Array.isArray(round.grossB) ? round.grossB : [];
+  return grossA.some((g: unknown) => g !== null && g !== undefined) ||
+    grossB.some((g: unknown) => g !== null && g !== undefined);
+}
+
+/**
+ * Whether a captains'-match market is shut. There are no tee times or matches
+ * here, so the book is governed by an explicit admin switch (`bettingOpen`)
+ * rather than "play has started"; a single round additionally closes itself the
+ * moment its card is entered, so only unplayed rounds are ever bettable.
+ */
+async function isCaptainsMarketClosed(
+  bet: Pick<BetDoc, "market" | "tournamentId" | "captainsRoundNumber">
+): Promise<boolean> {
+  const match = await loadCaptainsMatch(bet.tournamentId);
+  if (!match || match.bettingOpen !== true) return true;
+  if (bet.market !== "captainsRound") return false;
+  const n = bet.captainsRoundNumber;
+  if (typeof n !== "number") return true;
+  return captainsRoundPlayed(match, n);
+}
+
 /**
  * Whether a bet's market is no longer open to wagering. Match markets (and
  * match-scoped over/unders) close when the match starts; round markets when the
- * round starts; cup futures when the tournament starts. Read outside transactions;
- * the settlement trigger + confirm guard are the backstops against the race window.
+ * round starts; captains' markets on the bettingOpen switch (and, per round,
+ * once that card is in); cup futures when the tournament starts. Read outside
+ * transactions; the settlement trigger + confirm guard are the backstops
+ * against the race window.
  */
 async function marketClosed(
-  bet: Pick<BetDoc, "market" | "matchId" | "roundId" | "tournamentId" | "metric">
+  bet: Pick<BetDoc, "market" | "matchId" | "roundId" | "tournamentId" | "metric" | "captainsRoundNumber">
 ): Promise<boolean> {
   if (bet.market === "match") return isMatchClosed(bet.matchId);
   if (bet.market === "round") return bet.roundId ? isRoundStarted(bet.roundId) : true;
+  if (isCaptainsMarket(bet.market, bet.metric)) return isCaptainsMarketClosed(bet);
   if (bet.market === "overUnder") {
     // Match-scoped over/unders close with their match; player-points props are
     // tournament-scoped and close when the tournament starts.
@@ -178,6 +239,7 @@ async function createBet(
   let subjectId: string | undefined;   // player O/U
   let subjectAId: string | undefined;  // playerMatchup teamA side
   let subjectBId: string | undefined;  // playerMatchup teamB side
+  let captainsRound: number | undefined; // captainsRound: which round is bet on
 
   if (!tournamentId || typeof tournamentId !== "string") {
     throw new HttpsError("invalid-argument", "Missing tournamentId");
@@ -222,6 +284,42 @@ async function createBet(
     }
     if (await isRoundStarted(roundId)) {
       throw new HttpsError("failed-precondition", "Betting on this round is closed — it has already started");
+    }
+  } else if (isCaptainsMarket(market, metric as BetOverUnderMetric | undefined)) {
+    // The captains' match is its own collection with no rounds or matches behind
+    // it, so it is gated entirely on the match doc rather than on tee times.
+    // This must sit AHEAD of the generic overUnder branch, which would otherwise
+    // treat the captains metrics as tournament-scoped player props.
+    const cm = await loadCaptainsMatch(tournamentId);
+    if (!cm) throw new HttpsError("not-found", "This tournament has no captains' match");
+    if (cm.bettingOpen !== true) {
+      throw new HttpsError("failed-precondition", "Betting on the captains' match isn't open");
+    }
+    const totalRounds = Number(cm.totalRounds) || 0;
+
+    if (market === "captainsRound") {
+      const n = data.captainsRoundNumber;
+      if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > totalRounds) {
+        throw new HttpsError("invalid-argument", `captainsRoundNumber must be an integer 1-${totalRounds}`);
+      }
+      if (captainsRoundPlayed(cm, n)) {
+        throw new HttpsError("failed-precondition", `Round ${n} has already been played — its market is closed`);
+      }
+      captainsRound = n;
+    }
+
+    if (market === "overUnder") {
+      if (!isMetric(metric)) throw new HttpsError("invalid-argument", "A valid over/under metric is required");
+      if (typeof line !== "number" || !Number.isFinite(line) || line <= 0) {
+        throw new HttpsError("invalid-argument", "A positive line is required");
+      }
+      if (metric === "captainsRoundsWon") {
+        // The subject is one of the two captains — that's whose rounds are counted.
+        subjectId = await requirePlayerExists(data.subjectId, "subjectId");
+        if (subjectId !== cm.playerAId && subjectId !== cm.playerBId) {
+          throw new HttpsError("invalid-argument", "subjectId must be one of the two captains");
+        }
+      }
     }
   } else if (market === "overUnder") {
     if (!isMetric(metric)) {
@@ -304,6 +402,7 @@ async function createBet(
     doc.subjectAId = subjectAId;
     doc.subjectBId = subjectBId;
   }
+  if (captainsRound !== undefined) doc.captainsRoundNumber = captainsRound;
   if (target) doc.targetId = target;
 
   await ref.set(doc);
@@ -545,6 +644,85 @@ export const settlePlayerFutures = onCall(async (request) => {
     } else {
       return; // other markets settle via their own triggers / settleCupFutures
     }
+    batch.update(d.ref, { status: "settled", result, settledAt: FieldValue.serverTimestamp() });
+    settledCount++;
+  });
+  if (settledCount > 0) await batch.commit();
+
+  return { success: true, settledCount };
+});
+
+/**
+ * Admin: settle the captains'-match markets.
+ *
+ * Deliberately an explicit admin action rather than something saveCaptainsMatchRound
+ * does on write: a mistyped card would otherwise pay out instantly with no un-pay
+ * path. Enter the card, check it, then settle.
+ *
+ * - scope "round": settles that round's winner bets off the card's own tally.
+ *   Safe to run as soon as the card is in.
+ * - scope "season": settles the overall winner plus both season O/Us. The
+ *   clinch-round and rounds-won lines are only final once the season is over
+ *   (the match is decided or every round is in), so the admin UI warns first.
+ */
+export const settleCaptainsMatchBets = onCall(async (request) => {
+  await requireAdmin(request, "settleCaptainsMatchBets", { maxCalls: 10, windowSeconds: 60 });
+  const data = (request.data || {}) as Record<string, unknown>;
+  const { tournamentId, scope, roundNumber } = data;
+
+  if (!tournamentId || typeof tournamentId !== "string") {
+    throw new HttpsError("invalid-argument", "Missing tournamentId");
+  }
+  if (scope !== "round" && scope !== "season") {
+    throw new HttpsError("invalid-argument", "scope must be 'round' or 'season'");
+  }
+
+  const match = await loadCaptainsMatch(tournamentId);
+  if (!match) throw new HttpsError("not-found", "This tournament has no captains' match");
+  const summary = summarizeCaptainsSeason(match);
+
+  if (scope === "round") {
+    if (typeof roundNumber !== "number" || !Number.isInteger(roundNumber) || roundNumber < 1) {
+      throw new HttpsError("invalid-argument", "roundNumber must be a positive integer");
+    }
+    const tally = summary.roundTallies[roundNumber];
+    if (!tally || tally.thru === 0) {
+      throw new HttpsError("failed-precondition", `Round ${roundNumber} has no scores yet`);
+    }
+  }
+
+  // Filter by market in code off the (tournamentId, status) index — the same
+  // shape settlePlayerFutures uses, so this needs no new composite index.
+  const snap = await db()
+    .collection("bets")
+    .where("tournamentId", "==", tournamentId)
+    .where("status", "==", "active")
+    .get();
+
+  const batch = db().batch();
+  let settledCount = 0;
+  snap.docs.forEach((d) => {
+    const bet = d.data() as BetDoc;
+    let result;
+
+    if (scope === "round") {
+      if (bet.market !== "captainsRound" || bet.captainsRoundNumber !== roundNumber) return;
+      const tally = summary.roundTallies[roundNumber as number]!;
+      result = settleRoundBet(bet, tally.holesWonA, tally.holesWonB);
+    } else if (bet.market === "captainsMatch") {
+      const { state } = summary;
+      if (state.kind !== "won" && state.kind !== "halved") return; // not decided yet
+      // Player A is the teamA side, player B the teamB side; halved refunds.
+      result = settleCupFutureBet(bet, state.kind === "halved" ? "push" : state.winner === "A" ? "teamA" : "teamB");
+    } else if (bet.market === "overUnder" && bet.metric === "captainsClinchRound" && typeof bet.line === "number") {
+      result = settleOverUnderBet(bet, summary.clinchRound, bet.line);
+    } else if (bet.market === "overUnder" && bet.metric === "captainsRoundsWon" && typeof bet.line === "number") {
+      const won = bet.subjectId === match.playerAId ? summary.roundsWonA : summary.roundsWonB;
+      result = settleOverUnderBet(bet, won, bet.line);
+    } else {
+      return; // another market — left to its own settlement path
+    }
+
     batch.update(d.ref, { status: "settled", result, settledAt: FieldValue.serverTimestamp() });
     settledCount++;
   });

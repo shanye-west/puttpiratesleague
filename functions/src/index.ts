@@ -2260,6 +2260,7 @@ export {
   declineBet,
   settleCupFutures,
   settlePlayerFutures,
+  settleCaptainsMatchBets,
 } from "./callables/betsOps.js";
 
 // Settle-up ("mark as paid") for head-to-head betting tabs (betSettlements/{id}).

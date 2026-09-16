@@ -15,13 +15,15 @@ import { Modal } from "./Modal";
 export interface SportsbookHowToProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Swap the market list for the captains'-match markets (pre-draft tournaments). */
+  hasCaptainsMatch?: boolean;
 }
 
 // Tournament-long player-prop tile colors (mirror PlayerPropSheet / Sportsbook).
 const OVER_COLOR = "#059669";
 const UNDER_COLOR = "#475569";
 
-export default function SportsbookHowTo({ isOpen, onClose }: SportsbookHowToProps) {
+export default function SportsbookHowTo({ isOpen, onClose, hasCaptainsMatch }: SportsbookHowToProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="🎲 How the Sportsbook works" ariaLabel="Sportsbook how-to" maxWidth="max-w-md">
       <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1 text-sm leading-relaxed text-foreground">
@@ -63,8 +65,10 @@ export default function SportsbookHowTo({ isOpen, onClose }: SportsbookHowToProp
               in</strong> and goes live.
             </li>
             <li>
-              Either player can <strong className="text-foreground">call it off</strong> until the market starts (the
-              match tees off / the tournament begins) — after that it's set.
+              Either player can <strong className="text-foreground">call it off</strong> until the market closes
+              {hasCaptainsMatch
+                ? " (the round gets played, or the book is shut) — after that it's set."
+                : " (the match tees off / the tournament begins) — after that it's set."}
             </li>
             <li>
               When the result is known, the bet <strong className="text-foreground">settles automatically</strong> and
@@ -75,6 +79,43 @@ export default function SportsbookHowTo({ isOpen, onClose }: SportsbookHowToProp
 
         {/* What you can bet */}
         <Section title="What you can bet">
+          {hasCaptainsMatch ? (
+            <>
+              <Market
+                emoji="🥊"
+                name="Captains' Match Winner"
+                window="Open while the book is open"
+                desc="Pick which captain wins the season-long match outright. Settles when it's decided; a halved match refunds both sides."
+              />
+              <Market
+                emoji="⛳"
+                name="Round Winner"
+                window="Open until that round is played"
+                desc="Pick which captain wins a single round's card — most holes won that day. A halved round is a push. Each round's market closes as soon as its scorecard is entered."
+              />
+              <Market
+                emoji="⏳"
+                name="Decided By Round O/U"
+                window="Open while the book is open"
+                desc="Over or under on which round the match gets clinched. If it goes the distance it settles at the final round. Half-lines only, so there are no pushes."
+                sides={[
+                  { label: "Under", color: UNDER_COLOR },
+                  { label: "Over", color: OVER_COLOR },
+                ]}
+              />
+              <Market
+                emoji="📊"
+                name="Rounds Won O/U"
+                window="Open while the book is open"
+                desc="Over or under on how many rounds one captain wins outright across the season. Halved rounds count for neither. Half-lines only, so there are no pushes."
+                sides={[
+                  { label: "Under", color: UNDER_COLOR },
+                  { label: "Over", color: OVER_COLOR },
+                ]}
+              />
+            </>
+          ) : (
+            <>
           <Market
             emoji="🏆"
             name="Cup Winner"
@@ -129,6 +170,8 @@ export default function SportsbookHowTo({ isOpen, onClose }: SportsbookHowToProp
               { label: "Over", color: OVER_COLOR },
             ]}
           />
+            </>
+          )}
         </Section>
 
         {/* The tab + leaders */}

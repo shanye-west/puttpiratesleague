@@ -8,7 +8,8 @@
  * so a card is validated as a unit: 18 gross scores and 18 stroke flags a side.
  */
 
-import { isValidGross } from "../scoring/matchScoring.js";
+import { decideHole, isValidGross } from "../scoring/matchScoring.js";
+import type { CaptainsMatchRound, HoleData, MatchData } from "../types.js";
 
 export const HOLES_PER_ROUND = 18;
 export const DEFAULT_TOTAL_ROUNDS = 20;
@@ -25,6 +26,8 @@ export interface CaptainsMatchSettingsInput {
   playerAId?: string;
   playerBId?: string;
   totalRounds?: number;
+  /** Master switch for the captains'-match sportsbook markets. */
+  bettingOpen?: boolean;
 }
 
 export interface CaptainsMatchSettingsResult {
@@ -115,6 +118,9 @@ export function validateCaptainsMatchSettings(
       const id = typeof value === "string" ? value.trim() : "";
       if (!id) errors.push(`${key} is required`);
       else settings[key] = id;
+    } else if (key === "bettingOpen") {
+      if (typeof value !== "boolean") errors.push("bettingOpen must be true or false");
+      else settings.bettingOpen = value;
     } else if (key === "totalRounds") {
       if (!isInt(value) || value < 1 || value > MAX_TOTAL_ROUNDS) {
         errors.push(`totalRounds must be an integer 1-${MAX_TOTAL_ROUNDS}`);
@@ -220,5 +226,186 @@ export function validateCaptainsMatchRound(data: unknown, totalRounds: number): 
       strokesA,
       strokesB,
     },
+  };
+}
+
+// ============================================================================
+// SEASON SUMMARY (settlement math)
+// ============================================================================
+//
+// A server-side port of summarizeCaptainsMatch in
+// rowdy-ui/src/utils/captainsMatchScoring.ts, trimmed to what bet settlement
+// needs. The two packages share no code (separate tsconfig projects, no
+// cross-imports) and already keep parallel copies of matchScoring/types, so this
+// mirrors that convention. Its unit tests assert the same expected values as the
+// client suite's "full handicaps (the real cards)" cases — that shared
+// expectation is what keeps the two copies from drifting.
+
+/** Who won a hole from the A side's perspective, or null when it wasn't played. */
+type SeasonHoleResult = "A" | "B" | "halved" | null;
+
+export type CaptainsSeasonState =
+  | { kind: "notStarted" }
+  | { kind: "live"; leader: "A" | "B" | null; margin: number; toPlay: number; dormie: boolean }
+  | { kind: "won"; winner: "A" | "B"; margin: number; toPlay: number; roundNumber: number; hole: number }
+  | { kind: "halved" };
+
+export interface CaptainsRoundTally {
+  /** Every scored hole on the card, including any played after the match was decided. */
+  holesWonA: number;
+  holesWonB: number;
+  /** Holes with both scores entered. */
+  thru: number;
+}
+
+export interface CaptainsSeasonSummary {
+  totalRounds: number;
+  state: CaptainsSeasonState;
+  /** Per-round tallies, keyed by round number — the per-round market settles off these. */
+  roundTallies: Record<number, CaptainsRoundTally>;
+  /** Rounds each captain won outright; halved rounds count for neither. */
+  roundsWonA: number;
+  roundsWonB: number;
+  /**
+   * The round the match was decided in, or `totalRounds` when it went the
+   * distance (halved, or still undecided) — the clinch-round O/U settles here.
+   */
+  clinchRound: number;
+}
+
+/**
+ * Adapt one captains' card to the MatchData shape decideHole expects.
+ *
+ * Note the index conventions differ between the packages: this decideHole is
+ * 1-BASED (it reads holes[String(i)] and strokesReceived[i - 1]), while the
+ * client's takes a 0-based hole index and explicit arrays. Build the map with
+ * 1-based keys and let decideHole do the -1 itself.
+ */
+function toMatchData(round: CaptainsMatchRound): MatchData {
+  const grossA = Array.isArray(round.grossA) ? round.grossA : [];
+  const grossB = Array.isArray(round.grossB) ? round.grossB : [];
+  const holes: Record<string, HoleData> = {};
+  for (let i = 0; i < HOLES_PER_ROUND; i++) {
+    holes[String(i + 1)] = {
+      input: { teamAPlayerGross: grossA[i] ?? null, teamBPlayerGross: grossB[i] ?? null },
+    };
+  }
+  return {
+    holes,
+    teamAPlayers: [{ playerId: "A", strokesReceived: Array.isArray(round.strokesA) ? round.strokesA : [] }],
+    teamBPlayers: [{ playerId: "B", strokesReceived: Array.isArray(round.strokesB) ? round.strokesB : [] }],
+  };
+}
+
+function toSeasonResult(result: "teamA" | "teamB" | "AS" | null): SeasonHoleResult {
+  if (result === "teamA") return "A";
+  if (result === "teamB") return "B";
+  return result === "AS" ? "halved" : null;
+}
+
+/**
+ * Play the whole season from the match doc, exactly as the client does: cards
+ * apply in round-number order, the margin carries across them, and holes
+ * remaining counts blank holes AND rounds nobody has entered yet — so a gap in
+ * the schedule can never close the match early. The first moment the lead
+ * exceeds the holes remaining decides it; holes entered after that still tally
+ * on their own card but no longer move the match.
+ */
+export function summarizeCaptainsSeason(match: {
+  totalRounds?: unknown;
+  rounds?: unknown;
+}): CaptainsSeasonSummary {
+  const totalRounds =
+    typeof match.totalRounds === "number" && Number.isInteger(match.totalRounds) && match.totalRounds > 0
+      ? match.totalRounds
+      : 1;
+  const totalHoles = totalRounds * HOLES_PER_ROUND;
+
+  const raw = typeof match.rounds === "object" && match.rounds !== null ? (match.rounds as Record<string, unknown>) : {};
+  const cards = Object.entries(raw)
+    .map(([key, round]) => ({ roundNumber: Number(key), round: round as CaptainsMatchRound }))
+    .filter(
+      ({ roundNumber, round }) =>
+        Number.isInteger(roundNumber) &&
+        roundNumber >= 1 &&
+        roundNumber <= totalRounds &&
+        typeof round === "object" &&
+        round !== null
+    )
+    .sort((a, b) => a.roundNumber - b.roundNumber);
+
+  let margin = 0;
+  let holesPlayed = 0;
+  let won: Extract<CaptainsSeasonState, { kind: "won" }> | null = null;
+  const roundTallies: Record<number, CaptainsRoundTally> = {};
+  let roundsWonA = 0;
+  let roundsWonB = 0;
+
+  for (const { roundNumber, round } of cards) {
+    const data = toMatchData(round);
+    let holesWonA = 0;
+    let holesWonB = 0;
+    let thru = 0;
+
+    for (let i = 1; i <= HOLES_PER_ROUND; i++) {
+      const result = toSeasonResult(decideHole("singles", i, data));
+      if (result === null) continue;
+      thru++;
+      if (result === "A") holesWonA++;
+      else if (result === "B") holesWonB++;
+
+      // Post-match holes still count on the card, but never move the match.
+      if (won !== null) continue;
+
+      holesPlayed++;
+      if (result === "A") margin++;
+      else if (result === "B") margin--;
+
+      const toPlay = totalHoles - holesPlayed;
+      if (Math.abs(margin) > toPlay) {
+        won = {
+          kind: "won",
+          winner: margin > 0 ? "A" : "B",
+          margin: Math.abs(margin),
+          toPlay,
+          roundNumber,
+          hole: i,
+        };
+      }
+    }
+
+    roundTallies[roundNumber] = { holesWonA, holesWonB, thru };
+    // A round is won on its own card, including one played after the clinch.
+    if (thru > 0 && holesWonA > holesWonB) roundsWonA++;
+    else if (thru > 0 && holesWonB > holesWonA) roundsWonB++;
+  }
+
+  let state: CaptainsSeasonState;
+  if (won !== null) {
+    state = won;
+  } else if (holesPlayed === 0) {
+    state = { kind: "notStarted" };
+  } else if (holesPlayed === totalHoles) {
+    state = { kind: "halved" };
+  } else {
+    const lead = Math.abs(margin);
+    const toPlay = totalHoles - holesPlayed;
+    state = {
+      kind: "live",
+      leader: margin > 0 ? "A" : margin < 0 ? "B" : null,
+      margin: lead,
+      toPlay,
+      dormie: lead > 0 && lead === toPlay,
+    };
+  }
+
+  return {
+    totalRounds,
+    state,
+    roundTallies,
+    roundsWonA,
+    roundsWonB,
+    // Going the distance settles at totalRounds, so a half-line below it is "over".
+    clinchRound: state.kind === "won" ? state.roundNumber : totalRounds,
   };
 }

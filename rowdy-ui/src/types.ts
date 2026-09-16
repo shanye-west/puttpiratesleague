@@ -371,6 +371,12 @@ export type CaptainsMatchDoc = {
   /** Shown on the right, in the teamB color. */
   playerBId: string;
   totalRounds: number;
+  /**
+   * Master switch for the captains'-match sportsbook markets. Season markets
+   * (overall winner + both O/Us) are bettable only while this is true; a single
+   * round's market also closes on its own once that card has any score.
+   */
+  bettingOpen?: boolean;
   rounds?: Record<string, CaptainsMatchRound>;
 };
 
@@ -822,20 +828,36 @@ export interface RoundRecapDoc {
  *  - overUnder:    a numeric prop vs a line (sides over/under); see BetOverUnderMetric
  *  - playerMatchup: which of two players scores more tournament points
  *                  (teamA backs subjectAId, teamB backs subjectBId)
+ *  - captainsMatch: who wins the captains' match outright (teamA = player A,
+ *                  teamB = player B); a halved match is a push
+ *  - captainsRound: who wins one round of the captains' match (teamA/teamB),
+ *                  identified by captainsRoundNumber; a halved round is a push
  */
-export type BetMarket = "match" | "round" | "cupFuture" | "overUnder" | "playerMatchup";
+export type BetMarket =
+  | "match"
+  | "round"
+  | "cupFuture"
+  | "overUnder"
+  | "playerMatchup"
+  | "captainsMatch"
+  | "captainsRound";
 
 /** What an over/under bet is measured against. matchHolesPlayed = holes the match
  *  went before closing (status.thru); matchMargin = final margin of victory;
  *  playerTournamentPoints = a single player's total tournament points (subjectId),
  *  lines every half-point 0.5–3.5 (whole-point lines can push);
  *  playerTournamentWins = a single player's count of won matches (subjectId),
- *  half-point lines only (0.5/1.5/2.5/3.5) so it never pushes. */
+ *  half-point lines only (0.5/1.5/2.5/3.5) so it never pushes;
+ *  captainsClinchRound = the captains'-match round the match was decided in
+ *  (totalRounds when it goes the distance); captainsRoundsWon = rounds one
+ *  captain (subjectId) won outright. Both use half-lines only, so no push. */
 export type BetOverUnderMetric =
   | "matchHolesPlayed"
   | "matchMargin"
   | "playerTournamentPoints"
-  | "playerTournamentWins";
+  | "playerTournamentWins"
+  | "captainsClinchRound"
+  | "captainsRoundsWon";
 
 /** open marketplace offer (anyone may take) vs directed challenge (one target). */
 export type BetKind = "offer" | "challenge";
@@ -883,6 +905,7 @@ export type BetDoc = {
   subjectId?: string;                  // player O/U: the player whose tournament points are bet on
   subjectAId?: string;                 // playerMatchup: player backed by the teamA side
   subjectBId?: string;                 // playerMatchup: player backed by the teamB side
+  captainsRoundNumber?: number;        // present when market === "captainsRound"
   kind: BetKind;
   status: BetStatus;
   amount: number;                      // even-money stake each side risks

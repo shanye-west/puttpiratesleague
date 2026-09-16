@@ -31,6 +31,8 @@ import { teeTimeToMillis, formatTeeTime, formatRoundType } from "../utils";
 import ConfirmDialog from "../components/admin/ConfirmDialog";
 import BetMatchup, { type MatchupSide } from "../components/BetMatchup";
 import SportsbookHowTo from "../components/SportsbookHowTo";
+import CaptainsBetSheet from "../components/CaptainsBetSheet";
+import { useCaptainsMatch } from "../hooks/useCaptainsMatch";
 import type { BetDoc, BetOverUnderMetric, BetSide, MatchDoc, PlayerDoc, RoundDoc } from "../types";
 
 type Tab = "markets" | "inplay" | "mybets";
@@ -49,6 +51,13 @@ const SUBJECT_B_COLOR = "#d97706";
 // Tournament-long player O/U metrics (vs match-scoped over/unders like holes/margin).
 const isPlayerOuMetric = (m?: BetOverUnderMetric): boolean =>
   m === "playerTournamentPoints" || m === "playerTournamentWins";
+// Captains'-match O/U metrics — neither match-scoped nor player props, so every
+// bucket below has to exclude them explicitly or they land in the wrong group.
+const isCaptainsOuMetric = (m?: BetOverUnderMetric): boolean =>
+  m === "captainsClinchRound" || m === "captainsRoundsWon";
+/** Every market that belongs to the captains' match. */
+const isCaptainsBet = (b: BetDoc): boolean =>
+  b.market === "captainsMatch" || b.market === "captainsRound" || isCaptainsOuMetric(b.metric);
 
 export default function Sportsbook() {
   const { player } = useAuth();
@@ -61,6 +70,11 @@ export default function Sportsbook() {
     splitLockedRounds: true,
   });
   const { bets, loading: betsLoading } = useBets(tournament?.id);
+  // The captains' match (2027-style pre-draft tournaments). One doc listener,
+  // opened only when the tournament actually has one.
+  const { match: captainsMatch, summary: captainsSummary } = useCaptainsMatch(
+    tournament?.hasCaptainsMatch ? tournament.id : undefined
+  );
   const settlements = useBetSettlements(tournament?.id);
   // Pre-draft, the team rosters are empty but a draft pool exists — surface those
   // players so they can be bet on (player-prop subjects + challenge targets)
@@ -69,15 +83,22 @@ export default function Sportsbook() {
     () => (tournament?.draftPool ? Object.keys(tournament.draftPool) : []),
     [tournament]
   );
+  // The two captains are usually on no roster and in no draft pool yet, so they
+  // must be requested explicitly or every captains' bet renders "Unknown".
+  const captainIds = useMemo(
+    () => [captainsMatch?.playerAId, captainsMatch?.playerBId].filter(Boolean) as string[],
+    [captainsMatch?.playerAId, captainsMatch?.playerBId]
+  );
   const extraPlayerIds = useMemo(
     () => [
       ...new Set([
         ...bets.flatMap((b) => [b.proposerId, b.acceptorId, b.targetId].filter(Boolean) as string[]),
         ...settlements.flatMap((s) => [s.payerId, s.payeeId]),
         ...draftPoolIds,
+        ...captainIds,
       ]),
     ],
-    [bets, settlements, draftPoolIds]
+    [bets, settlements, draftPoolIds, captainIds]
   );
   const { players, loading: playersLoading } = useRosterPlayers(tournament, extraPlayerIds);
 
@@ -101,6 +122,8 @@ export default function Sportsbook() {
   const [selectedEvent, setSelectedEvent] = useState<BetEvent | null>(null);
   // The tournament-long player-props sheet (matchups + player point O/Us).
   const [propSheetOpen, setPropSheetOpen] = useState(false);
+  // The captains'-match sheet (outright / round / clinch O/U / rounds-won O/U).
+  const [captainsSheetOpen, setCaptainsSheetOpen] = useState(false);
   // The "How it works" guide (betting mechanics + the list of markets).
   const [howToOpen, setHowToOpen] = useState(false);
 
@@ -168,6 +191,16 @@ export default function Sportsbook() {
   }, [nowMs]);
   /** A locked-in bet can still be called off until its market starts. */
   const canCancelLocked = (b: BetDoc): boolean => {
+    // Captains' markets mirror the server predicate: the book has to be open,
+    // and a round bet also dies once that round's card is entered. There are no
+    // matches behind this tournament, so tournamentStarted can never close it.
+    if (isCaptainsBet(b)) {
+      if (!captainsBettingOpen) return false;
+      if (b.market !== "captainsRound") return true;
+      return typeof b.captainsRoundNumber === "number"
+        ? captainsBettableRounds.includes(b.captainsRoundNumber)
+        : false;
+    }
     // Tournament-long futures (Cup, player matchups, player point O/Us) stay
     // callable until any match starts.
     if (b.market === "cupFuture" || b.market === "playerMatchup") return !tournamentStarted;
@@ -195,8 +228,29 @@ export default function Sportsbook() {
     teamB: tournament?.teamB?.color || "var(--team-b-default, #b91c1c)",
   };
 
+  // The captains' match sides. Player A is the teamA side and B the teamB side,
+  // matching CaptainsMatchSection — but 2027's stored team names/colors are
+  // still empty strings, so labels come from the players and colors fall back to
+  // the same CSS defaults that section uses.
+  const captainsNames = {
+    teamA: playerName(captainsMatch?.playerAId),
+    teamB: playerName(captainsMatch?.playerBId),
+  };
+  const captainsColors = {
+    teamA: tournament?.teamA?.color || "var(--team-a-default, #1e40af)",
+    teamB: tournament?.teamB?.color || "var(--team-b-default, #b91c1c)",
+  };
+  /** Rounds with no card yet (or a card with no scores) — the only bettable ones. */
+  const captainsBettableRounds = useMemo(() => {
+    if (!captainsSummary) return [];
+    const played = new Set(captainsSummary.rounds.filter((r) => r.thru > 0).map((r) => r.roundNumber));
+    return Array.from({ length: captainsSummary.totalRounds }, (_, i) => i + 1).filter((n) => !played.has(n));
+  }, [captainsSummary]);
+  const captainsBettingOpen = captainsMatch?.bettingOpen === true;
+
   /** Labels for a team bet's two sides — player names for matches, team names otherwise. */
   const sideLabelsForBet = (b: BetDoc): { teamA: string; teamB: string } => {
+    if (b.market === "captainsMatch" || b.market === "captainsRound") return captainsNames;
     if (b.market === "cupFuture" || b.market === "round") return teamNames;
     if (b.market === "playerMatchup") {
       return { teamA: playerName(b.subjectAId), teamB: playerName(b.subjectBId) };
@@ -283,11 +337,16 @@ export default function Sportsbook() {
       return teeTimeToMillis(m?.teeTime) ?? Number.MAX_SAFE_INTEGER;
     };
     return activeBets
-      .filter((b) => b.market === "match" || (b.market === "overUnder" && !isPlayerOuMetric(b.metric)))
+      .filter(
+        (b) =>
+          b.market === "match" ||
+          (b.market === "overUnder" && !isPlayerOuMetric(b.metric) && !isCaptainsOuMetric(b.metric))
+      )
       .sort((a, z) => teeMs(a) - teeMs(z) || (a.matchId ?? "").localeCompare(z.matchId ?? ""));
   }, [activeBets, matchesById]);
   const inPlaySessions = useMemo(() => activeBets.filter((b) => b.market === "round"), [activeBets]);
   const inPlayCup = useMemo(() => activeBets.filter((b) => b.market === "cupFuture"), [activeBets]);
+  const inPlayCaptains = useMemo(() => activeBets.filter(isCaptainsBet), [activeBets]);
   const inPlayProps = useMemo(
     () =>
       activeBets.filter(
@@ -374,6 +433,7 @@ export default function Sportsbook() {
 
   /** How many open offers sit on an event — drives the row's "N open" chip. */
   const cupOfferCount = openOffers.filter((b) => b.market === "cupFuture").length;
+  const captainsOffers = openOffers.filter(isCaptainsBet);
   const playerPropOffers = openOffers.filter(
     (b) => b.market === "playerMatchup" || (b.market === "overUnder" && isPlayerOuMetric(b.metric))
   );
@@ -383,6 +443,11 @@ export default function Sportsbook() {
 
   const activeCount =
     myBets.incomingChallenges.length + myBets.myOpenOffers.length + myBets.active.length;
+
+  // A captains'-match tournament has no rounds, matches or roster yet, so none
+  // of the Cup markets mean anything until its own rounds exist. Same predicate
+  // routes/Tournament.tsx uses to decide whether to show the Cup sections.
+  const showCup = !tournament.hasCaptainsMatch || rounds.length > 0;
 
   // ---- shared render helpers ----
   /**
@@ -409,8 +474,16 @@ export default function Sportsbook() {
       // Player props carry the player's name + a unit ("pts"/"wins"); match-scoped
       // over/unders (holes, margin) read as a bare number.
       const isPlayerProp = isPlayerOuMetric(b.metric);
-      const prefix = isPlayerProp && b.subjectId ? `${lastName(playerName(b.subjectId))} ` : "";
-      const unit = b.metric === "playerTournamentWins" ? " wins" : isPlayerProp ? " pts" : "";
+      const named = (isPlayerProp || b.metric === "captainsRoundsWon") && b.subjectId;
+      const prefix = named ? `${lastName(playerName(b.subjectId))} ` : "";
+      const unit =
+        b.metric === "playerTournamentWins"
+          ? " wins"
+          : b.metric === "captainsRoundsWon"
+            ? " rds"
+            : isPlayerProp
+              ? " pts"
+              : "";
       return {
         teamA: tile("under", `${prefix}Under ${line}${unit}`, UNDER_COLOR),
         teamB: tile("over", `${prefix}Over ${line}${unit}`, OVER_COLOR),
@@ -418,10 +491,13 @@ export default function Sportsbook() {
     }
     const labels = sideLabelsForBet(b);
     // Player matchups aren't team-affiliated — use neutral subject colors.
+    // Captains' markets use the two team colors, matching the home-page section.
     const colors =
       b.market === "playerMatchup"
         ? { teamA: SUBJECT_A_COLOR, teamB: SUBJECT_B_COLOR }
-        : { teamA: teamColors.teamA, teamB: teamColors.teamB };
+        : isCaptainsBet(b)
+          ? { teamA: captainsColors.teamA, teamB: captainsColors.teamB }
+          : { teamA: teamColors.teamA, teamB: teamColors.teamB };
     return {
       teamA: tile("teamA", labels.teamA, colors.teamA),
       teamB: tile("teamB", labels.teamB, colors.teamB),
@@ -551,7 +627,7 @@ export default function Sportsbook() {
                 until the tournament starts (no rounds/draft needed); sessions and
                 matches appear once they exist. Only truly empty once play has begun
                 and nothing is left to bet. */}
-            {tournamentStarted && bettableRounds.length === 0 && bettableMatches.length === 0 ? (
+            {showCup && tournamentStarted && bettableRounds.length === 0 && bettableMatches.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-state-icon">🎲</div>
                 <div className="empty-state-text">
@@ -562,7 +638,7 @@ export default function Sportsbook() {
               <>
                 {/* Cup + Player Props are both tournament-long markets and both are
                     single rows — one "Futures" card rather than a section apiece. */}
-                {!tournamentStarted && (
+                {showCup && !tournamentStarted && (
                   <BetGroup title="Futures" count={2}>
                     <Card className="overflow-hidden">
                       <ul className="divide-y divide-border/60">
@@ -589,7 +665,25 @@ export default function Sportsbook() {
                   </BetGroup>
                 )}
 
-                <BetGroup title="Sessions" count={bettableRounds.length}>
+                {captainsMatch && captainsBettingOpen && (
+                  <BetGroup title="Captains' Match" count={1}>
+                    <Card className="overflow-hidden">
+                      <ul className="divide-y divide-border/60">
+                        <li>
+                          <BetEventRow
+                            label={<span className="block truncate">{captainsMatch.name}</span>}
+                            subtitle={`${captainsNames.teamA} v ${captainsNames.teamB} · outright, rounds & props`}
+                            accent={captainsColors}
+                            openCount={captainsOffers.length}
+                            onClick={() => setCaptainsSheetOpen(true)}
+                          />
+                        </li>
+                      </ul>
+                    </Card>
+                  </BetGroup>
+                )}
+
+                <BetGroup title="Sessions" count={showCup ? bettableRounds.length : 0}>
                   <Card className="overflow-hidden">
                     <ul className="divide-y divide-border/60">
                       {bettableRounds.map((r) => (
@@ -613,7 +707,7 @@ export default function Sportsbook() {
 
                 <BetGroup
                   title="Matches"
-                  count={bettableMatches.length}
+                  count={showCup ? bettableMatches.length : 0}
                   trailing={<CountTag>{bettableMatches.length}</CountTag>}
                 >
                   <Card className="overflow-hidden">
@@ -708,6 +802,7 @@ export default function Sportsbook() {
                 </p>
                 {renderInPlayGroup("Matches", inPlayMatches)}
                 {renderInPlayGroup("Sessions", inPlaySessions)}
+                {renderInPlayGroup("Captains' Match", inPlayCaptains)}
                 {renderInPlayGroup("Cup", inPlayCup)}
                 {renderInPlayGroup("Player Props", inPlayProps)}
               </>
@@ -1002,7 +1097,11 @@ export default function Sportsbook() {
       </div>
 
       {/* How-it-works guide: mechanics + the full list of markets. */}
-      <SportsbookHowTo isOpen={howToOpen} onClose={() => setHowToOpen(false)} />
+      <SportsbookHowTo
+        isOpen={howToOpen}
+        onClose={() => setHowToOpen(false)}
+        hasCaptainsMatch={!!captainsMatch}
+      />
 
       {confirmState && (
         <ConfirmDialog
@@ -1054,6 +1153,27 @@ export default function Sportsbook() {
             />
           );
         })()}
+
+      {/* Captains' match sheet (outright, per-round, and the two season O/Us). */}
+      {captainsSheetOpen && captainsMatch && (
+        <CaptainsBetSheet
+          isOpen
+          onClose={() => setCaptainsSheetOpen(false)}
+          tournamentId={tournament.id}
+          label={captainsMatch.name}
+          sideLabels={captainsNames}
+          sideColors={captainsColors}
+          playerAId={captainsMatch.playerAId}
+          playerBId={captainsMatch.playerBId}
+          bettableRounds={captainsBettableRounds}
+          openOffers={captainsOffers}
+          loggedIn={!!player}
+          meId={player?.id}
+          rosterOptions={propSubjectOptions}
+          bettorName={playerName}
+          onTake={(b) => runAction(() => betsApi.acceptBet({ betId: b.id }), "Bet taken and locked in!")}
+        />
+      )}
 
       {/* Tournament-long player props sheet (matchups + player point O/Us). */}
       {propSheetOpen && (

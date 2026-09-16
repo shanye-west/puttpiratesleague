@@ -454,8 +454,19 @@ export interface RoundRecapDoc {
  *  - overUnder:    a numeric prop vs a line (sides over/under); see BetOverUnderMetric
  *  - playerMatchup: which of two players scores more tournament points
  *                  (positional sides: teamA backs subjectAId, teamB backs subjectBId)
+ *  - captainsMatch: who wins the captains' match outright (teamA = player A,
+ *                  teamB = player B); a halved match is a push
+ *  - captainsRound: who wins one round of the captains' match (teamA/teamB),
+ *                  identified by captainsRoundNumber; a halved round is a push
  */
-export type BetMarket = "match" | "round" | "cupFuture" | "overUnder" | "playerMatchup";
+export type BetMarket =
+  | "match"
+  | "round"
+  | "cupFuture"
+  | "overUnder"
+  | "playerMatchup"
+  | "captainsMatch"
+  | "captainsRound";
 
 /** What an over/under bet is measured against.
  *  - matchHolesPlayed:        holes the match went before closing (status.thru)
@@ -465,12 +476,19 @@ export type BetMarket = "match" | "round" | "cupFuture" | "overUnder" | "playerM
  *  - playerTournamentWins:    a single player's count of won matches (subjectId).
  *    Lines are half-points only (0.5/1.5/2.5/3.5) so it can never push.
  *    Match-scoped metrics close with their match; the player-tournament metrics
- *    are tournament-scoped (close when the tournament starts). */
+ *    are tournament-scoped (close when the tournament starts).
+ *  - captainsClinchRound:     the captains'-match round the match was decided in;
+ *    settles at totalRounds when it goes the distance. Half-lines only (no push).
+ *  - captainsRoundsWon:       rounds one captain (subjectId) won outright across
+ *    the season; halved rounds count for neither. Half-lines only (no push).
+ *    Both captains metrics open/close on captainsMatches/{tid}.bettingOpen. */
 export type BetOverUnderMetric =
   | "matchHolesPlayed"
   | "matchMargin"
   | "playerTournamentPoints"
-  | "playerTournamentWins";
+  | "playerTournamentWins"
+  | "captainsClinchRound"
+  | "captainsRoundsWon";
 
 /** open marketplace offer (anyone may take) vs directed challenge (one target). */
 export type BetKind = "offer" | "challenge";
@@ -516,6 +534,7 @@ export interface BetDoc {
   subjectId?: string;                  // player O/U: the player whose tournament points are bet on
   subjectAId?: string;                 // playerMatchup: player backed by the teamA side
   subjectBId?: string;                 // playerMatchup: player backed by the teamB side
+  captainsRoundNumber?: number;        // present when market === "captainsRound"
   kind: BetKind;
   status: BetStatus;
   amount: number;                      // even-money stake each side risks
