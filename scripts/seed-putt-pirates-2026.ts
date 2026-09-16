@@ -4,6 +4,7 @@
  *   npx ts-node seed-putt-pirates-2026.ts                     # dry run: prints what it would write
  *   npx ts-node seed-putt-pirates-2026.ts --commit            # pass 1: players, season, 10 rounds, 80 matches
  *   npx ts-node seed-putt-pirates-2026.ts --commit --admin-email you@example.com --admin-player pNickPetersen
+ *   # an admin who isn't one of the 16 players: add --admin-name "Shane Peterson" to create the doc
  *   npx ts-node seed-putt-pirates-2026.ts --commit --results data/putt-pirates-2026-results.json
  *                                                             # pass 2: result-only backfill for played matches
  *
@@ -88,6 +89,7 @@ const argValue = (flag: string): string | undefined => {
 };
 const adminEmail = argValue("--admin-email");
 const adminPlayer = argValue("--admin-player");
+const adminName = argValue("--admin-name");
 const resultsFile = argValue("--results");
 
 const serviceAccountPath = path.join(__dirname, "../service-account.json");
@@ -215,13 +217,15 @@ async function linkAdmin(email: string, playerId: string) {
     process.exit(1);
   }
   const ref = db.collection("players").doc(playerId);
-  if (!(await ref.get()).exists) {
-    console.error(`❌ Player ${playerId} not found (run pass 1 first).`);
+  const exists = (await ref.get()).exists;
+  if (!exists && !adminName) {
+    console.error(`❌ Player ${playerId} not found. Pass --admin-name "First Last" to create a non-playing admin doc.`);
     process.exit(1);
   }
+  if (!exists) console.log(`✅ player ${playerId} (${adminName}) — admin only, not on a league team`);
   console.log(`✅ ${playerId}.authUid = ${user.uid}, isAdmin = true`);
   if (commit) {
-    await ref.set({ authUid: user.uid, isAdmin: true }, { merge: true });
+    await ref.set({ ...(exists ? {} : { id: playerId, displayName: adminName }), authUid: user.uid, isAdmin: true }, { merge: true });
     await ref.collection("private").doc("profile").set({ email: email.toLowerCase() }, { merge: true });
   }
 }
