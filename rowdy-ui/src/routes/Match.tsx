@@ -48,6 +48,8 @@ import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import { useVisibilityFlush } from "../hooks/useVisibilityFlush";
 import ComponentErrorBoundary from "../components/ComponentErrorBoundary";
 import CommentThread from "../components/CommentThread";
+import MatchSetupPanel from "../components/match/MatchSetupPanel";
+import { isLeagueTournament, leagueTeamColor, teamOfPlayer } from "../utils/leagueTeams";
 
 import { predictClose, computeRunningStatus, type HoleData as MatchScoringHoleData, type HoleInput } from "../utils/matchScoring";
 
@@ -248,6 +250,15 @@ export default function Match() {
   // the tournament is explicitly opened for public edits (feature toggle).
   // Note: round.locked is the primary control for editability (not tournament.active).
   const canEdit = !!tournament?.openPublicEdits || canEditMatch(teamAPlayerIds, teamBPlayerIds);
+
+  // League season (Putt Pirates): player-vs-player, each side coloured by the
+  // player's league team; the card must be set up (course + strokes) before
+  // scoring, and a result-only match (admin-entered) has no card at all.
+  const isLeague = isLeagueTournament(tournament);
+  const leagueColorA = leagueTeamColor(teamOfPlayer(tournament?.leagueTeams, teamAPlayerIds[0] ?? ""), tournament?.leagueTeams);
+  const leagueColorB = leagueTeamColor(teamOfPlayer(tournament?.leagueTeams, teamBPlayerIds[0] ?? ""), tournament?.leagueTeams);
+  const needsSetup = isLeague && !match?.courseId && !match?.manualResult;
+  const isManualResult = !!match?.manualResult && !!match?.status?.closed;
   
   // Reason why user can't edit (for displaying message)
   const editBlockReason = useMemo(() => {
@@ -270,7 +281,7 @@ export default function Match() {
   useEffect(() => {
     if (!match?.id || !canEdit || isMatchClosed || !isOnline) return;
     if (warmedMatchRef.current === match.id) return;
-    const sessionKey = `rowdycup:warmed:${match.id}`;
+    const sessionKey = `puttpirates:warmed:${match.id}`;
     try {
       if (sessionStorage.getItem(sessionKey)) return;
     } catch { /* sessionStorage unavailable (private mode) — warm anyway */ }
@@ -325,7 +336,7 @@ export default function Match() {
     setOfflineWarmFailed(!ok);
     if (ok && match?.id) {
       warmedMatchRef.current = match.id;
-      try { sessionStorage.setItem(`rowdycup:warmed:${match.id}`, "1"); } catch { /* ignore */ }
+      try { sessionStorage.setItem(`puttpirates:warmed:${match.id}`, "1"); } catch { /* ignore */ }
     }
   };
 
@@ -721,9 +732,10 @@ export default function Match() {
   // Check if hole is locked (includes auth check)
   // Note: Post-match holes are NOT locked - players can continue scoring after match closes
   const isHoleLocked = useCallback((_holeNum: number) => {
-    // Can't edit if: round locked OR match locked OR user can't edit
-    return roundLocked || matchLocked || !canEdit;
-  }, [roundLocked, matchLocked, canEdit]);
+    // Can't edit if: round locked OR match locked OR user can't edit OR (league)
+    // the course + strokes haven't been set yet
+    return roundLocked || matchLocked || !canEdit || needsSetup;
+  }, [roundLocked, matchLocked, canEdit, needsSetup]);
 
   // Helper to build new input object based on format
   const buildNewInput = useCallback((hole: typeof holes[0], team: "A" | "B", pIdx: number, value: number | null) => {
@@ -830,9 +842,9 @@ export default function Match() {
     return computeRunningStatus(holeData, format, match?.teamAPlayers, match?.teamBPlayers);
   }, [holes, format, match?.teamAPlayers, match?.teamBPlayers]);
 
-  // Get team colors
-  const teamAColor = tournament?.teamA?.color || "var(--team-a-default)";
-  const teamBColor = tournament?.teamB?.color || "var(--team-b-default)";
+  // Get team colors (league: the two players' league-team colours)
+  const teamAColor = isLeague ? leagueColorA : tournament?.teamA?.color || "var(--team-a-default)";
+  const teamBColor = isLeague ? leagueColorB : tournament?.teamB?.color || "var(--team-b-default)";
 
   // Four player rows: Best Ball and Shamble (individual player scores)
   const isFourPlayerRows = format === "twoManBestBall" || format === "twoManShamble";
@@ -928,7 +940,7 @@ export default function Match() {
   }
 
   const tName = tournament?.name || "Match Scoring";
-  const tSeries = tournament?.series || "rowdyCup";
+  const tSeries = tournament?.series || "puttPirates";
 
   // Helper to read full courseHandicap for a player from match.courseHandicaps
   const getCourseHandicapFor = (team: "A" | "B", pIdx: number) => {
@@ -959,10 +971,39 @@ export default function Match() {
           roundLocked={roundLocked}
           isMatchClosed={isMatchClosed}
           onOpenStrokesInfo={() => setStrokesInfoModal(true)}
-          showStrokesInfo={showStrokesInfo}
+          showStrokesInfo={showStrokesInfo && !isManualResult}
           offlineNotReady={canEdit && !isMatchClosed && offlineWarmFailed}
           onOpenOfflinePrep={() => setShowOfflineReady(true)}
+          sideNames={
+            isLeague
+              ? { teamA: getPlayerShortName(teamAPlayerIds[0]), teamB: getPlayerShortName(teamBPlayerIds[0]) }
+              : undefined
+          }
+          sideColors={isLeague ? { teamA: leagueColorA, teamB: leagueColorB } : undefined}
         />
+
+        {/* LEAGUE: course + strokes set by the players before scoring */}
+        {isLeague && !isManualResult && (
+          <MatchSetupPanel
+            match={match}
+            canSetup={canEdit || !!player?.isAdmin}
+            isAdmin={!!player?.isAdmin}
+            hasScores={completedHolesCount > 0 || matchThru > 0}
+            nameOf={getPlayerShortName}
+          />
+        )}
+
+        {/* LEAGUE: a result-only match (entered by an admin, played off-app) */}
+        {isManualResult && (
+          <div className="card space-y-1 p-4 text-center">
+            <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Result entered by admin
+            </div>
+            <div className="text-sm text-muted-foreground">
+              This match was played off the app — there's no hole-by-hole card, only the result above.
+            </div>
+          </div>
+        )}
 
         {/* NOTE: no sync-state badge here on purpose. It sat in normal flow
             above the scorecard, so every save pushed the card down and popped it
@@ -1000,6 +1041,7 @@ export default function Match() {
 
         {/* SCORECARD TABLE - Horizontally Scrollable (all 18 holes) */}
         
+        {!isManualResult && (
         <div className="card p-0 overflow-hidden relative">
           {/* Save status indicator - top right corner */}
           {canEdit && !isMatchClosed && (
@@ -1218,6 +1260,7 @@ export default function Match() {
             </table>
           </div>
         </div>
+        )}
 
         {/* MATCH FLOW GRAPH */}
         {match.status?.marginHistory && match.status.marginHistory.length > 0 && (
@@ -1226,8 +1269,8 @@ export default function Match() {
               marginHistory={match.status.marginHistory}
               teamAColor={teamAColor}
               teamBColor={teamBColor}
-              teamALogo={tournament?.teamA?.logo}
-              teamBLogo={tournament?.teamB?.logo}
+              teamALogo={isLeague ? undefined : tournament?.teamA?.logo}
+              teamBLogo={isLeague ? undefined : tournament?.teamB?.logo}
             />
           </ComponentErrorBoundary>
         )}
@@ -1244,8 +1287,8 @@ export default function Match() {
               teamAColor={teamAColor}
               teamBColor={teamBColor}
               getPlayerName={getPlayerName}
-              teamAName={tournament?.teamA?.name}
-              teamBName={tournament?.teamB?.name}
+              teamAName={isLeague ? getPlayerShortName(teamAPlayerIds[0]) : tournament?.teamA?.name}
+              teamBName={isLeague ? getPlayerShortName(teamBPlayerIds[0]) : tournament?.teamB?.name}
               marginHistory={match.status?.marginHistory}
             />
           </ComponentErrorBoundary>

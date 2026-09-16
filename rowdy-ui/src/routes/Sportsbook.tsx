@@ -32,6 +32,7 @@ import ConfirmDialog from "../components/admin/ConfirmDialog";
 import BetMatchup, { type MatchupSide } from "../components/BetMatchup";
 import SportsbookHowTo from "../components/SportsbookHowTo";
 import CaptainsBetSheet from "../components/CaptainsBetSheet";
+import { isLeagueTournament } from "../utils/leagueTeams";
 import { useCaptainsMatch } from "../hooks/useCaptainsMatch";
 import type { BetDoc, BetOverUnderMetric, BetSide, MatchDoc, PlayerDoc, RoundDoc } from "../types";
 
@@ -70,6 +71,9 @@ export default function Sportsbook() {
     splitLockedRounds: true,
   });
   const { bets, loading: betsLoading } = useBets(tournament?.id);
+  // League season (Putt Pirates): no Cup futures / session markets, and the
+  // season-long player props stay open while the player has matches left.
+  const isLeague = isLeagueTournament(tournament);
   // The captains' match (2027-style pre-draft tournaments). One doc listener,
   // opened only when the tournament actually has one.
   const { match: captainsMatch, summary: captainsSummary } = useCaptainsMatch(
@@ -180,6 +184,17 @@ export default function Sportsbook() {
     () => allMatches.some((m) => (m.status?.thru ?? 0) > 0 || m.status?.closed === true),
     [allMatches]
   );
+  /** League: a player prop is open while its subject still has an unclosed match. */
+  const subjectHasOpenMatch = useCallback(
+    (pid: string | undefined): boolean =>
+      !!pid &&
+      allMatches.some(
+        (m) =>
+          m.status?.closed !== true &&
+          [...(m.teamAPlayers ?? []), ...(m.teamBPlayers ?? [])].some((p) => p.playerId === pid)
+      ),
+    [allMatches]
+  );
 
   /** Mirror of the backend's matchStartedPlay: scored, closed, locked, or teed off. */
   const matchHasStarted = useCallback((m: MatchDoc | undefined): boolean => {
@@ -204,7 +219,9 @@ export default function Sportsbook() {
     // Tournament-long futures (Cup, player matchups, player point O/Us) stay
     // callable until any match starts.
     if (b.market === "cupFuture" || b.market === "playerMatchup") return !tournamentStarted;
-    if (b.market === "overUnder" && isPlayerOuMetric(b.metric)) return !tournamentStarted;
+    if (b.market === "overUnder" && isPlayerOuMetric(b.metric)) {
+      return isLeague ? subjectHasOpenMatch(b.subjectId) : !tournamentStarted;
+    }
     if (b.market === "round") {
       const ms = b.roundId ? (matchesByRound[b.roundId] ?? []) : [];
       return ms.length > 0 && ms.every((m) => !matchHasStarted(m));
@@ -627,7 +644,7 @@ export default function Sportsbook() {
                 until the tournament starts (no rounds/draft needed); sessions and
                 matches appear once they exist. Only truly empty once play has begun
                 and nothing is left to bet. */}
-            {showCup && tournamentStarted && bettableRounds.length === 0 && bettableMatches.length === 0 ? (
+            {showCup && !isLeague && tournamentStarted && bettableRounds.length === 0 && bettableMatches.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-state-icon">🎲</div>
                 <div className="empty-state-text">
@@ -638,10 +655,11 @@ export default function Sportsbook() {
               <>
                 {/* Cup + Player Props are both tournament-long markets and both are
                     single rows — one "Futures" card rather than a section apiece. */}
-                {showCup && !tournamentStarted && (
-                  <BetGroup title="Futures" count={2}>
+                {showCup && (isLeague || !tournamentStarted) && (
+                  <BetGroup title={isLeague ? "Season props" : "Futures"} count={isLeague ? 1 : 2}>
                     <Card className="overflow-hidden">
                       <ul className="divide-y divide-border/60">
+                        {!isLeague && (
                         <li>
                           <BetEventRow
                             label={<span className="block truncate">Cup Winner</span>}
@@ -651,10 +669,11 @@ export default function Sportsbook() {
                             onClick={() => setSelectedEvent({ kind: "cup" })}
                           />
                         </li>
+                        )}
                         <li>
                           <BetEventRow
                             label={<span className="block truncate">Player Props</span>}
-                            subtitle="Matchups · points & wins O/U"
+                            subtitle={isLeague ? "Season points & wins O/U" : "Matchups · points & wins O/U"}
                             accent={{ teamA: SUBJECT_A_COLOR, teamB: SUBJECT_B_COLOR }}
                             openCount={playerPropOffers.length}
                             onClick={() => setPropSheetOpen(true)}
@@ -683,10 +702,10 @@ export default function Sportsbook() {
                   </BetGroup>
                 )}
 
-                <BetGroup title="Sessions" count={showCup ? bettableRounds.length : 0}>
+                <BetGroup title="Sessions" count={showCup && !isLeague ? bettableRounds.length : 0}>
                   <Card className="overflow-hidden">
                     <ul className="divide-y divide-border/60">
-                      {bettableRounds.map((r) => (
+                      {!isLeague && bettableRounds.map((r) => (
                         <li key={r.id}>
                           <BetEventRow
                             label={
@@ -725,7 +744,7 @@ export default function Sportsbook() {
                                   <span className="block truncate">{sideLastNames(m.teamBPlayers)}</span>
                                 </>
                               }
-                              subtitle={r ? `${r.day ? `Round ${r.day}` : "Round"} · ${formatRoundType(r.format)}` : undefined}
+                              subtitle={r ? `${r.name?.trim() || (r.day ? `Round ${r.day}` : "Round")} · ${formatRoundType(r.format)}` : undefined}
                               accent={teamColors}
                               openCount={matchOfferCount(m.id)}
                               onClick={() => setSelectedEvent({ kind: "match", matchId: m.id })}
@@ -1181,6 +1200,7 @@ export default function Sportsbook() {
           isOpen
           onClose={() => setPropSheetOpen(false)}
           tournamentId={tournament.id}
+          hideMatchup={isLeague}
           openOffers={playerPropOffers}
           loggedIn={!!player}
           meId={player?.id}

@@ -29,13 +29,13 @@
   --color-ring: hsl(var(--ring));
 
   /* Brand Colors */
-  --color-brand-primary: #132448;
-  --color-brand-secondary: #bf203c;
+  --color-brand-primary: #0b3d3a;
+  --color-brand-secondary: #c9a227;
   --color-brand-accent: #ffffff;
   
   /* Team Defaults */
-  --color-team-a: #132448;
-  --color-team-b: #bf203c;
+  --color-team-a: #0b3d3a;
+  --color-team-b: #c9a227;
   
   /* Font */
   --font-sans: "Space Grotesk", "Segoe UI", sans-serif;
@@ -61,9 +61,9 @@
     --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
-    --primary: 221 58% 18%;
+    --primary: 176 70% 14%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 349 71% 44%;
+    --secondary: 46 68% 47%;
     --secondary-foreground: 0 0% 100%;
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
@@ -73,13 +73,13 @@
     --destructive-foreground: 0 0% 100%;
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 221 58% 18%;
+    --ring: 176 70% 14%;
 
-    /* --- ROWDY CUP (SUMMER/DEFAULT) THEME --- */
-    --brand-primary: #132448;
+    /* --- PUTT PIRATES (DEFAULT) THEME — placeholder palette, swap freely --- */
+    --brand-primary: #0b3d3a;
     /* Lighter stop for the primary-button / brand gradient. */
-    --brand-primary-2: #1f3a69;
-    --brand-secondary: #bf203c;
+    --brand-primary-2: #156b64;
+    --brand-secondary: #c9a227;
     --brand-accent: #ffffff;
     
     /* UI Colors */
@@ -90,8 +90,8 @@
     --divider: #e2e8f0;
     
     /* Team Defaults */
-    --team-a-default: #132448;
-    --team-b-default: #bf203c;
+    --team-a-default: #0b3d3a;
+    --team-b-default: #c9a227;
 
     /* Dimensions */
     --header-height: 64px;
@@ -100,18 +100,6 @@
     --radius-lg: 18px;
     --radius-md: 14px;
     --radius-sm: 10px;
-  }
-
-  /* --- CHRISTMAS CLASSIC OVERRIDE --- */
-  body.theme-christmas {
-    --brand-primary: #ef211c;
-    --brand-secondary: #00863c;
-    --app-bg: #f6f6f6;
-    --team-a-default: #00863c;
-    --team-b-default: #ef211c;
-    --primary: 1 87% 52%;
-    --secondary: 147 100% 26%;
-    --ring: 1 87% 52%;
   }
 
   /* =========================================
@@ -259,17 +247,12 @@
   /* Sticky Header - extends into safe area (notch area) on mobile */
   .app-header {
     @apply flex items-center justify-between px-4 sticky top-0 z-50;
-    background: linear-gradient(120deg, rgba(19, 36, 72, 0.98) 0% 50%, rgba(191, 32, 60, 0.96) 50% 100%);
+    background: linear-gradient(120deg, rgba(11, 61, 58, 0.98) 0% 50%, rgba(27, 94, 87, 0.96) 50% 100%);
     color: var(--brand-accent);
     height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
     padding-top: env(safe-area-inset-top, 0px);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-  }
-
-  /* Christmas Classic: diagonal split header (green bottom-left, red top-right) */
-  body.theme-christmas .app-header {
-    background: linear-gradient(120deg, rgba(0, 134, 60, 0.96) 0% 50%, rgba(239, 33, 28, 0.95) 50% 100%);
   }
 
   .header-title {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { CircleAlert, ExternalLink, Flag, Lock, Plus, Settings2 } from "lucide-react";
+import { CircleAlert, ExternalLink, Lock, Plus, Settings2 } from "lucide-react";
 import AdminPage, { AdminNotFound } from "../../components/admin/AdminPage";
 import AdminSection from "../../components/admin/AdminSection";
 import NavRow, { EmptyRow } from "../../components/admin/NavRow";
@@ -22,9 +22,6 @@ import type { RoundDoc, TournamentDoc } from "../../types";
  */
 export default function TournamentHome() {
   const { tournamentId, tournament, rounds, loading, error: ctxError, refreshRounds } = useAdminTournament();
-  // Denormalized on the tournament doc by the sideEventOps callables, so this
-  // needs no extra query (the tournament subscription already has it).
-  const sideEvents = tournament?.sideEvents ?? [];
   const [busyRoundId, setBusyRoundId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -110,38 +107,9 @@ export default function TournamentHome() {
         </AdminSection>
       )}
 
-      {/* Offered on a tournament that already has one, or one still being set
-          up (no rounds yet) — not on every past Cup. */}
-      {(tournament.hasCaptainsMatch || rounds.length === 0) && (
-        <AdminSection
-          title="Captains' match"
-          description="The pre-draft running singles match between the captains, scored off the app. Enter each round's card here — it awards no Cup points and records no stats."
-        >
-          {tournament.hasCaptainsMatch ? (
-            <NavRow
-              to={`/admin/t/${tournamentId}/captains-match`}
-              leading={
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-[0.6rem] font-bold uppercase tracking-wider text-muted-foreground">
-                  vs
-                </div>
-              }
-              title="Captains' Match"
-              subtitle="Players, rounds and scorecards"
-            />
-          ) : (
-            <Button asChild variant="outline" size="sm">
-              <Link to={`/admin/t/${tournamentId}/captains-match`}>
-                <Plus className="h-4 w-4" />
-                Set up
-              </Link>
-            </Button>
-          )}
-        </AdminSection>
-      )}
-
       <AdminSection
         title="Rounds"
-        description="The lock freezes score entry for a whole round. Open a round for its matches, pairings draft, and recap."
+        description="One round per month. The lock freezes score entry for the whole month. Open a round for its matches and recap."
         actions={
           <Button asChild variant="ghost" size="sm">
             <Link to={`/admin/t/${tournamentId}/round/new`}>
@@ -164,7 +132,7 @@ export default function TournamentHome() {
                   <span className="text-xs font-bold leading-none text-foreground">{r.day ?? "?"}</span>
                 </div>
               }
-              title={formatRoundType(r.format)}
+              title={r.name?.trim() ? `${r.name.trim()} · ${formatRoundType(r.format)}` : formatRoundType(r.format)}
               subtitle={`${r.matchIds?.length ?? 0} match${(r.matchIds?.length ?? 0) === 1 ? "" : "es"} · ${r.pointsValue ?? 1} pt each`}
               badges={r.locked ? <Badge variant="muted"><Lock className="mr-1 h-3 w-3" />locked</Badge> : null}
               trailing={
@@ -181,37 +149,10 @@ export default function TournamentHome() {
         </div>
       </AdminSection>
 
-      <AdminSection
-        title="Side events"
-        description="Optional for-fun games like the 3-man scramble. They award no Cup points, record no stats, and reach players through the hamburger menu only."
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link to={`/admin/t/${tournamentId}/side-event/new`}>
-              <Plus className="h-4 w-4" />
-              Event
-            </Link>
-          </Button>
-        }
-      >
-        <div className="space-y-2">
-          {sideEvents.map((e) => (
-            <NavRow
-              key={e.id}
-              to={`/admin/t/${tournamentId}/side-event/${e.id}`}
-              leading={<Flag className="h-5 w-5 text-muted-foreground" />}
-              title={e.name}
-              subtitle={e.id}
-              badges={e.hidden ? <Badge variant="muted">hidden</Badge> : null}
-            />
-          ))}
-          {sideEvents.length === 0 && <EmptyRow>No side events yet.</EmptyRow>}
-        </div>
-      </AdminSection>
-
-      <AdminSection title="Tournament" description="Rosters, handicaps, captains, feature flags, and archiving.">
+      <AdminSection title="Season" description="League teams, captains, feature flags, and archiving.">
         <div className="flex flex-wrap gap-2">
           <Button asChild>
-            <Link to={`/admin/t/${tournamentId}/settings`}>Settings &amp; rosters</Link>
+            <Link to={`/admin/t/${tournamentId}/settings`}>Settings &amp; teams</Link>
           </Button>
           <Button asChild variant="outline">
             <Link to={`/tournament/${tournamentId}`}>
@@ -240,24 +181,30 @@ function setupTodos(tournament: TournamentDoc, rounds: RoundDoc[], tournamentId:
   const items: TodoItem[] = [];
   const settings = `/admin/t/${tournamentId}/settings`;
 
-  const teamACount = tierPlayerIds(tournament.teamA?.rosterByTier).length;
-  const teamBCount = tierPlayerIds(tournament.teamB?.rosterByTier).length;
-  if (teamACount === 0 || teamBCount === 0) {
-    items.push({
-      label: "Set the rosters",
-      detail: `${tournament.teamA?.name || "Team A"}: ${teamACount} · ${tournament.teamB?.name || "Team B"}: ${teamBCount}`,
-      to: settings,
-    });
-  } else if (!tournament.teamA?.captainId || !tournament.teamB?.captainId) {
-    items.push({
-      label: "Pick captains",
-      detail: "Captains run the pairings draft and get a planning board.",
-      to: settings,
-    });
+  const leagueTeams = tournament.leagueTeams ?? [];
+  if (leagueTeams.length > 0) {
+    const short = leagueTeams.filter((t) => (t.playerIds?.length ?? 0) < 4);
+    if (short.length > 0) {
+      items.push({
+        label: `Fill out ${short.length} league team${short.length === 1 ? "" : "s"}`,
+        detail: short.map((t) => `${t.name}: ${t.playerIds?.length ?? 0}/4`).join(" · "),
+        to: settings,
+      });
+    }
+  } else {
+    const teamACount = tierPlayerIds(tournament.teamA?.rosterByTier).length;
+    const teamBCount = tierPlayerIds(tournament.teamB?.rosterByTier).length;
+    if (teamACount === 0 || teamBCount === 0) {
+      items.push({
+        label: "Set up the league teams",
+        detail: "Four teams of four with a captain each — under Settings & teams.",
+        to: settings,
+      });
+    }
   }
 
   if (rounds.length === 0) {
-    items.push({ label: "Create the rounds", detail: "One round per day of play.", to: `/admin/t/${tournamentId}/round/new` });
+    items.push({ label: "Create the rounds", detail: "One round per month of the season.", to: `/admin/t/${tournamentId}/round/new` });
   } else {
     const noFormat = rounds.filter((r) => !r.format);
     if (noFormat.length > 0) {
@@ -267,19 +214,11 @@ function setupTodos(tournament: TournamentDoc, rounds: RoundDoc[], tournamentId:
         to: `/admin/t/${tournamentId}/round/${noFormat[0].id}`,
       });
     }
-    const noCourse = rounds.filter((r) => !r.courseId);
-    if (noCourse.length > 0) {
-      items.push({
-        label: `Assign a course to ${noCourse.length} round${noCourse.length === 1 ? "" : "s"}`,
-        detail: "Strokes and skins need the course's pars and handicap indexes.",
-        to: `/admin/t/${tournamentId}/round/${noCourse[0].id}`,
-      });
-    }
     const noMatches = rounds.filter((r) => (r.matchIds?.length ?? 0) === 0);
     if (noMatches.length > 0) {
       items.push({
         label: `Build matches for ${noMatches.length} round${noMatches.length === 1 ? "" : "s"}`,
-        detail: "Run the captains' pairings draft, or add matches by hand.",
+        detail: "Add each month's matches by hand (or run the season seed script).",
         to: `/admin/t/${tournamentId}/round/${noMatches[0].id}`,
       });
     }

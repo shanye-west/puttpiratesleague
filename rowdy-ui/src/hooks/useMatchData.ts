@@ -262,8 +262,9 @@ export function useMatchData(matchId: string | undefined): UseMatchDataResult {
     return () => { cancelled = true; };
   }, [tournamentId, tournamentContext?.tournament?.id, roundLoaded]);
 
-  // 5. Fetch course (one-time fetch, cached by ID)
-  const courseId = round?.courseId;
+  // 5. Fetch course (one-time fetch, cached by ID). League: the players' own
+  // per-match course (set by "Set up match") wins over the round's.
+  const courseId = match?.courseId || round?.courseId;
   
   useEffect(() => {
     // Don't mark as loaded until we know the courseId (after round loads)

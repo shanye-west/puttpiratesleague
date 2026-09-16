@@ -35,12 +35,12 @@ try {
 try {
   if (typeof firebase === "undefined") throw new Error("Firebase SDK unavailable");
   firebase.initializeApp({
-    apiKey: "AIzaSyAt561vHNjQZKEAbQbLYTbg15EfODb3o4k",
-    authDomain: "rowdy-pwa.firebaseapp.com",
-    projectId: "rowdy-pwa",
-    storageBucket: "rowdy-pwa.firebasestorage.app",
-    messagingSenderId: "463685576544",
-    appId: "1:463685576544:web:a01c6d1c204b1d150de005",
+    apiKey: "AIzaSyDLjhUCVBdNRhLkUgIzy4irHD6qc_5hG5o",
+    authDomain: "puttpiratesgolf.firebaseapp.com",
+    projectId: "puttpiratesgolf",
+    storageBucket: "puttpiratesgolf.firebasestorage.app",
+    messagingSenderId: "816106928697",
+    appId: "1:816106928697:web:83ff6fd6907168d2f86be8",
   });
 
   const messaging = firebase.messaging();
@@ -51,12 +51,12 @@ try {
   // `notification` payload causes.
   messaging.onBackgroundMessage((payload) => {
     const data = payload.data || {};
-    const title = data.title || "Rowdy Cup";
+    const title = data.title || "Putt Pirates";
     self.registration.showNotification(title, {
       body: data.body || "",
       icon: "/pwa-192x192.png",
       badge: "/pwa-192x192.png",
-      tag: data.category || "rowdy",
+      tag: data.category || "puttpirates",
       data: { link: data.link || "/" },
     });
   });

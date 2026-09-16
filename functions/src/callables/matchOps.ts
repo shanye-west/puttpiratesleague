@@ -5,13 +5,19 @@
  *
  * All writes go through the Admin SDK, which bypasses security rules — every
  * callable must start with requireAdmin().
+ *
+ * League mode (Putt Pirates): a round may have NO course — players pick their
+ * course per match and set it (plus strokes) later through setupMatchCard in
+ * matchSetupOps.ts. seedMatch/editMatch then write zero strokes and leave
+ * courseHandicaps empty instead of failing.
  */
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { requireAdmin } from "../helpers/adminAuth.js";
 import { normalizeTeeTime } from "./teeTime.js";
-import { computeTeamsWithStrokes, type CourseForStrokes, type ResolvedPlayer } from "../helpers/strokeCalculation.js";
+import { computeTeamsWithStrokes, type CourseForStrokes, type ResolvedPlayer, type TeamsWithStrokes } from "../helpers/strokeCalculation.js";
+import { zeros18 } from "../helpers/matchHelpers.js";
 import { ensureTournamentTeamColors } from "../utils/teamColors.js";
 
 function db() {
@@ -23,17 +29,8 @@ interface PlayerPayload {
   handicapIndex?: unknown;
 }
 
-/** Round's course with the 18-hole invariant enforced (shared by all three callables). */
-async function fetchCourseForRound(roundId: string): Promise<{ courseId: string; course: CourseForStrokes }> {
-  const roundDoc = await db().collection("rounds").doc(roundId).get();
-  if (!roundDoc.exists) {
-    throw new HttpsError("not-found", "Round not found");
-  }
-  const courseId = roundDoc.data()!.courseId;
-  if (!courseId) {
-    throw new HttpsError("failed-precondition", "Round does not have a courseId");
-  }
-
+/** A course doc with the 18-hole invariant enforced. */
+export async function fetchCourseById(courseId: string): Promise<{ courseId: string; course: CourseForStrokes }> {
   const courseDoc = await db().collection("courses").doc(courseId).get();
   if (!courseDoc.exists) {
     throw new HttpsError("not-found", "Course not found");
@@ -43,6 +40,56 @@ async function fetchCourseForRound(roundId: string): Promise<{ courseId: string;
     throw new HttpsError("failed-precondition", "Course must have 18 holes");
   }
   return { courseId, course };
+}
+
+/**
+ * The round's course, or null when the round has none (league mode — the
+ * course is chosen per match later). Throws only when the round itself is missing.
+ */
+async function fetchRoundCourse(roundId: string): Promise<{ courseId: string; course: CourseForStrokes } | null> {
+  const roundDoc = await db().collection("rounds").doc(roundId).get();
+  if (!roundDoc.exists) {
+    throw new HttpsError("not-found", "Round not found");
+  }
+  const courseId = roundDoc.data()!.courseId;
+  if (!courseId) return null;
+  return fetchCourseById(courseId);
+}
+
+/** Cup behaviour: the round MUST have a course (recalculateMatchStrokes). */
+async function fetchCourseForRound(roundId: string): Promise<{ courseId: string; course: CourseForStrokes }> {
+  const found = await fetchRoundCourse(roundId);
+  if (!found) {
+    throw new HttpsError("failed-precondition", "Round does not have a courseId");
+  }
+  return found;
+}
+
+/** Zero-stroke sides for a match whose course isn't known yet. */
+function sidesWithoutStrokes(teamAPlayers: PlayerPayload[], teamBPlayers: PlayerPayload[]): TeamsWithStrokes {
+  const none = (p: PlayerPayload) => ({ playerId: p.playerId, strokesReceived: zeros18() });
+  return {
+    teamAPlayersWithStrokes: teamAPlayers.map(none),
+    teamBPlayersWithStrokes: teamBPlayers.map(none),
+    courseHandicaps: [],
+  };
+}
+
+/**
+ * Auth uids of the given players (for the security-rules `authorizedUids`
+ * array) — one batched getAll round-trip instead of a getDoc per player.
+ */
+export async function authorizedUidsFor(playerIds: string[]): Promise<string[]> {
+  const ids = playerIds.filter((pid) => typeof pid === "string" && pid);
+  if (ids.length === 0) return [];
+  const playerRefs = ids.map((pid) => db().collection("players").doc(pid));
+  const playerSnaps = await db().getAll(...playerRefs);
+  const authorizedUids: string[] = [];
+  for (const pSnap of playerSnaps) {
+    const authUid = pSnap.data()?.authUid;
+    if (authUid) authorizedUids.push(authUid);
+  }
+  return authorizedUids;
 }
 
 /** Tournament handicap maps used as fallback when the caller omits handicapIndex. */
@@ -94,14 +141,16 @@ export async function buildSeededMatchDoc(params: {
 }): Promise<Record<string, unknown>> {
   const { id, tournamentId, roundId, teamAPlayers, teamBPlayers, teeTime, matchNumber } = params;
 
-  const { course } = await fetchCourseForRound(roundId);
+  const roundCourse = await fetchRoundCourse(roundId);
   const { teamAHandicaps, teamBHandicaps } = await fetchTournamentHandicaps(tournamentId);
 
-  const { teamAPlayersWithStrokes, teamBPlayersWithStrokes, courseHandicaps } = computeTeamsWithStrokes(
-    resolveWithFallback(teamAPlayers, teamAHandicaps, teamBHandicaps),
-    resolveWithFallback(teamBPlayers, teamAHandicaps, teamBHandicaps),
-    course
-  );
+  const { teamAPlayersWithStrokes, teamBPlayersWithStrokes, courseHandicaps } = roundCourse
+    ? computeTeamsWithStrokes(
+        resolveWithFallback(teamAPlayers, teamAHandicaps, teamBHandicaps),
+        resolveWithFallback(teamBPlayers, teamAHandicaps, teamBHandicaps),
+        roundCourse.course
+      )
+    : sidesWithoutStrokes(teamAPlayers, teamBPlayers);
 
   const teeTimeTimestamp = normalizeTeeTime(teeTime);
 
@@ -117,18 +166,9 @@ export async function buildSeededMatchDoc(params: {
     matchNumberToUse = candidate;
   }
 
-  // Fetch player auth UIDs for security rules optimization — one batched getAll
-  // round-trip instead of a getDoc per player.
+  // Player auth UIDs for the security rules' authorizedUids array.
   const allPlayerIds = [...teamAPlayers, ...teamBPlayers].map((p: PlayerPayload) => p.playerId);
-  const authorizedUids: string[] = [];
-  if (allPlayerIds.length > 0) {
-    const playerRefs = allPlayerIds.map((pid) => db().collection("players").doc(pid));
-    const playerSnaps = await db().getAll(...playerRefs);
-    for (const pSnap of playerSnaps) {
-      const authUid = pSnap.data()?.authUid;
-      if (authUid) authorizedUids.push(authUid);
-    }
-  }
+  const authorizedUids = await authorizedUidsFor(allPlayerIds);
 
   return {
     id,
@@ -139,6 +179,7 @@ export async function buildSeededMatchDoc(params: {
     teamAPlayers: teamAPlayersWithStrokes,
     teamBPlayers: teamBPlayersWithStrokes,
     courseHandicaps,
+    playerIds: allPlayerIds.filter((pid) => typeof pid === "string" && pid),
     authorizedUids, // Store UIDs directly for efficient security rules
     holes: {},
     status: {
@@ -220,14 +261,20 @@ export const editMatch = onCall(async (request) => {
     throw new HttpsError("not-found", "Match not found");
   }
 
-  const { course } = await fetchCourseForRound(roundId);
+  const roundCourse = await fetchRoundCourse(roundId);
   const { teamAHandicaps, teamBHandicaps } = await fetchTournamentHandicaps(tournamentId);
 
-  const { teamAPlayersWithStrokes, teamBPlayersWithStrokes, courseHandicaps } = computeTeamsWithStrokes(
-    resolveWithFallback(teamAPlayers, teamAHandicaps, teamBHandicaps),
-    resolveWithFallback(teamBPlayers, teamAHandicaps, teamBHandicaps),
-    course
-  );
+  const { teamAPlayersWithStrokes, teamBPlayersWithStrokes, courseHandicaps } = roundCourse
+    ? computeTeamsWithStrokes(
+        resolveWithFallback(teamAPlayers, teamAHandicaps, teamBHandicaps),
+        resolveWithFallback(teamBPlayers, teamAHandicaps, teamBHandicaps),
+        roundCourse.course
+      )
+    : sidesWithoutStrokes(teamAPlayers, teamBPlayers);
+
+  const allPlayerIds = [...teamAPlayers, ...teamBPlayers]
+    .map((p: PlayerPayload) => p.playerId)
+    .filter((pid) => typeof pid === "string" && pid);
 
   const updates: Record<string, unknown> = {
     tournamentId,
@@ -235,7 +282,18 @@ export const editMatch = onCall(async (request) => {
     teamAPlayers: teamAPlayersWithStrokes,
     teamBPlayers: teamBPlayersWithStrokes,
     courseHandicaps,
+    playerIds: allPlayerIds,
+    authorizedUids: await authorizedUidsFor(allPlayerIds),
   };
+  if (!roundCourse) {
+    // League: the players re-run "Set up match" for the new pairing; a stale
+    // per-match course/strokes must not survive a roster edit.
+    updates.courseId = FieldValue.delete();
+    updates.strokesSetAt = FieldValue.delete();
+    updates.strokesSetBy = FieldValue.delete();
+    updates._computeSig = FieldValue.delete();
+    updates._lastComputed = FieldValue.delete();
+  }
 
   // Only update teeTime if provided
   const teeTimeTimestamp = normalizeTeeTime(teeTime);

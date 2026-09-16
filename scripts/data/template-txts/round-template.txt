@@ -1,4 +1,4 @@
-/rowdy-pwa/scripts
+scripts/
 npx ts-node seed-round.ts --input data/round.json
 
 npx ts-node seed-round.ts --input data/round.json --force (if needed)

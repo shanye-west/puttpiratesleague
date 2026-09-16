@@ -20,6 +20,8 @@ import { formatRoundType } from "../../utils";
 import { cn } from "../../lib/utils";
 import type { MatchDoc, RoundFormat } from "../../types";
 import { isDriveTrackingFormat, isScrambleFormat, isSinglesFormat } from "../../types";
+import MatchSetupPanel from "../../components/match/MatchSetupPanel";
+import { isLeagueTournament } from "../../utils/leagueTeams";
 
 const HOLES = Array.from({ length: 18 }, (_, i) => i + 1);
 
@@ -41,6 +43,10 @@ export default function MatchAdmin() {
 
   const [holeNum, setHoleNum] = useState("1");
   const [holeForm, setHoleForm] = useState<HoleFormState | null>(null);
+  // League: result-only matches (played off-app)
+  const [resultWinner, setResultWinner] = useState<"teamA" | "teamB" | "AS">("teamA");
+  const [resultMargin, setResultMargin] = useState("1");
+  const [resultThru, setResultThru] = useState("18");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
 
@@ -125,6 +131,24 @@ export default function MatchAdmin() {
     });
   };
 
+  const handleSetResult = (e: React.FormEvent) => {
+    e.preventDefault();
+    runAction(async () => {
+      await adminApi.setMatchResult({
+        matchId,
+        winner: resultWinner,
+        ...(resultWinner !== "AS" ? { margin: Number(resultMargin), thru: Number(resultThru) } : {}),
+      });
+      return "Result saved. Status, standings and stats recompute automatically.";
+    });
+  };
+
+  const handleClearResult = () =>
+    runAction(async () => {
+      await adminApi.clearMatchResult({ matchId });
+      return "Result cleared — the match is open again.";
+    });
+
   const handleRecalcStrokes = () =>
     runAction(async () => {
       const res = await adminApi.recalculateMatchStrokes({ matchId });
@@ -148,7 +172,7 @@ export default function MatchAdmin() {
   const breadcrumbs = [
     { label: "Admin", to: "/admin" },
     { label: tournament?.name ?? "Tournament", to: `/admin/t/${tournamentId}` },
-    ...(round ? [{ label: `Day ${round.day ?? "?"}`, to: `/admin/t/${tournamentId}/round/${round.id}` }] : []),
+    ...(round ? [{ label: round.name?.trim() || `Round ${round.day ?? "?"}`, to: `/admin/t/${tournamentId}/round/${round.id}` }] : []),
     { label: `Match ${match?.matchNumber ?? ""}`.trim() },
   ];
 
@@ -225,14 +249,16 @@ export default function MatchAdmin() {
     </Field>
   );
 
-  const teamALabel = tournament.teamA?.name || "Team A";
-  const teamBLabel = tournament.teamB?.name || "Team B";
+  const isLeague = isLeagueTournament(tournament);
+  const teamALabel = isLeague ? teamANames[0] ?? "Player A" : tournament.teamA?.name || "Team A";
+  const teamBLabel = isLeague ? teamBNames[0] ?? "Player B" : tournament.teamB?.name || "Team B";
+  const manual = match.manualResult;
 
   return (
     <AdminPage
       headerTitle={tournamentLabel}
       breadcrumbs={breadcrumbs}
-      eyebrow={round ? `Day ${round.day} · ${formatRoundType(round.format)}` : tournamentLabel}
+      eyebrow={round ? `${round.name?.trim() || `Round ${round.day}`} · ${formatRoundType(round.format)}` : tournamentLabel}
       title={`Match ${match.matchNumber ?? ""}`.trim() || "Match"}
       description={`${teamANames.join(" & ") || "TBD"} vs ${teamBNames.join(" & ") || "TBD"}`}
       badges={
@@ -244,6 +270,7 @@ export default function MatchAdmin() {
             <Badge variant="info">thru {match.status?.thru ?? 0}</Badge>
           )}
           {match.status?.dormie && <Badge variant="warning">dormie</Badge>}
+          {manual && <Badge variant="info">result-only</Badge>}
         </>
       }
       error={error}
@@ -257,6 +284,74 @@ export default function MatchAdmin() {
         </Button>
       }
     >
+      {isLeague && (
+        <AdminSection
+          title="Result (played off-app)"
+          description="For a match with no card: record the outcome directly. Standings, points and bet settlement follow. Not allowed once any hole is scored."
+        >
+          {manual ? (
+            <div className="space-y-3">
+              <InfoNote>
+                Recorded as{" "}
+                <strong>
+                  {manual.winner === "AS"
+                    ? "halved"
+                    : `${manual.winner === "teamA" ? teamALabel : teamBLabel} won ${manual.margin ?? 1}${(manual.thru ?? 18) < 18 ? `&${18 - (manual.thru ?? 18)}` : " up"}`}
+                </strong>
+                .
+              </InfoNote>
+              <Button type="button" variant="outline" onClick={handleClearResult} disabled={busy}>
+                {busy ? "Working…" : "Clear result"}
+              </Button>
+            </div>
+          ) : scoredCount > 0 ? (
+            <p className="text-sm text-muted-foreground">This match has hole scores — its result comes from the card.</p>
+          ) : (
+            <form onSubmit={handleSetResult} className="space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Winner">
+                  <select value={resultWinner} onChange={(e) => setResultWinner(e.target.value as "teamA" | "teamB" | "AS")} className={inputClass}>
+                    <option value="teamA">{teamALabel}</option>
+                    <option value="teamB">{teamBLabel}</option>
+                    <option value="AS">Halved</option>
+                  </select>
+                </Field>
+                <Field label="Margin (up)">
+                  <input type="number" min="1" max="18" value={resultMargin} onChange={(e) => setResultMargin(e.target.value)} className={inputClass} disabled={resultWinner === "AS"} />
+                </Field>
+                <Field label="Thru (holes)">
+                  <input type="number" min="1" max="18" value={resultThru} onChange={(e) => setResultThru(e.target.value)} className={inputClass} disabled={resultWinner === "AS"} />
+                </Field>
+              </div>
+              <InfoNote>
+                e.g. “3&amp;2” = margin 3, thru 16. A win that went the distance is margin 1+, thru 18.
+              </InfoNote>
+              <Button type="submit" disabled={busy} className="w-full">
+                {busy ? "Saving…" : "Save result"}
+              </Button>
+            </form>
+          )}
+        </AdminSection>
+      )}
+
+      {isLeague && !manual && (
+        <AdminSection
+          title="Course & strokes"
+          description="The players normally set this themselves before scoring. Change it here to correct a course or a handicap — strokes are re-placed and the match recomputes."
+        >
+          <MatchSetupPanel
+            key={`${match.id}-${match.courseId ?? ""}-${match.courseHandicaps?.join(",") ?? ""}`}
+            match={match}
+            canSetup
+            isAdmin
+            hasScores={scoredCount > 0}
+            nameOf={(pid) => (pid ? playerName[pid] ?? pid : "")}
+            onSaved={() => { void loadMatch(); }}
+            defaultOpen={!match.courseId}
+          />
+        </AdminSection>
+      )}
+
       <AdminSection
         title="Scores"
         description="Tap a hole to correct it. Blank a field to clear that score — match status, stats, and skins recompute automatically."
@@ -369,6 +464,7 @@ export default function MatchAdmin() {
         />
       </AdminSection>
 
+      {!isLeague && (
       <AdminSection
         title="Recalculate strokes"
         description="Re-syncs strokesReceived with the tournament's current handicap indexes (GHIN formula, spin-down from lowest)."
@@ -377,6 +473,7 @@ export default function MatchAdmin() {
           {busy ? "Working…" : "Recalculate strokes"}
         </Button>
       </AdminSection>
+      )}
 
       <AdminSection
         title="Delete match"

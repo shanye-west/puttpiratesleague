@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "../ui/button";
 import { Field, FieldGroup, ToggleList, ToggleRow } from "./fields";
 import { inputClass, monoInputClass } from "./inputStyles";
-import type { CourseDoc, RoundDoc, RoundFormat } from "../../types";
+import type { CourseDoc, LeagueTeam, RoundDoc, RoundFormat } from "../../types";
 import type { RoundUpdates } from "../../api/adminContracts";
 
 // `fourManScramble` is deliberately absent: it exists only to render historical
@@ -17,6 +17,8 @@ const FORMAT_OPTIONS: { value: RoundFormat | ""; label: string }[] = [
 
 interface RoundFormState {
   day: string;
+  name: string;
+  bonusTeamId: string;
   format: RoundFormat | "";
   courseId: string;
   pointsValue: string;
@@ -29,7 +31,9 @@ interface RoundFormState {
 
 const emptyForm: RoundFormState = {
   day: "1",
-  format: "",
+  name: "",
+  bonusTeamId: "",
+  format: "singles",
   courseId: "",
   pointsValue: "1",
   trackDrives: false,
@@ -42,6 +46,8 @@ const emptyForm: RoundFormState = {
 function roundToForm(r: RoundDoc): RoundFormState {
   return {
     day: String(r.day ?? 0),
+    name: r.name ?? "",
+    bonusTeamId: r.bonusTeamId ?? "",
     format: r.format ?? "",
     courseId: r.courseId ?? "",
     pointsValue: String(r.pointsValue ?? 1),
@@ -56,6 +62,8 @@ function roundToForm(r: RoundDoc): RoundFormState {
 function formToUpdates(form: RoundFormState): RoundUpdates {
   return {
     day: Number(form.day),
+    name: form.name.trim(),
+    bonusTeamId: form.bonusTeamId === "" ? null : form.bonusTeamId,
     format: form.format === "" ? null : form.format,
     courseId: form.courseId === "" ? null : form.courseId,
     pointsValue: Number(form.pointsValue),
@@ -73,6 +81,8 @@ interface RoundFormProps {
   /** Default day for create mode (e.g. rounds.length + 1). */
   defaultDay?: number;
   courses: CourseDoc[];
+  /** League seasons: the teams the monthly bonus point can be assigned to. */
+  leagueTeams?: LeagueTeam[];
   /** Shown only in create mode. */
   showRoundIdInput?: boolean;
   submitting: boolean;
@@ -85,6 +95,7 @@ export default function RoundForm({
   initial,
   defaultDay,
   courses,
+  leagueTeams,
   showRoundIdInput = false,
   submitting,
   submitLabel,
@@ -110,14 +121,14 @@ export default function RoundForm({
             type="text"
             value={newRoundId}
             onChange={(e) => setNewRoundId(e.target.value)}
-            placeholder="e.g. rc2026-day1"
+            placeholder="e.g. 2026PuttPirates-R03"
             className={monoInputClass}
           />
         </Field>
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Day">
+        <Field label="Order" hint="Sorts the season's rounds (1 = first month).">
           <input
             type="number"
             min="0"
@@ -125,6 +136,16 @@ export default function RoundForm({
             onChange={(e) => setForm({ ...form, day: e.target.value })}
             className={inputClass}
             required
+          />
+        </Field>
+        <Field label="Name" optional hint="Shown instead of “Round n” — e.g. the month.">
+          <input
+            type="text"
+            maxLength={40}
+            value={form.name}
+            placeholder="March"
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            className={inputClass}
           />
         </Field>
         <Field label="Points per match">
@@ -154,13 +175,13 @@ export default function RoundForm({
             )}
           </select>
         </Field>
-        <Field label="Course">
+        <Field label="Course" hint="Leave blank when players pick their own course per match.">
           <select
             value={form.courseId}
             onChange={(e) => setForm({ ...form, courseId: e.target.value })}
             className={inputClass}
           >
-            <option value="">No course</option>
+            <option value="">No course (per match)</option>
             {courses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name || c.id}
@@ -170,6 +191,25 @@ export default function RoundForm({
           </select>
         </Field>
       </div>
+
+      {leagueTeams && leagueTeams.length > 0 && (
+        <Field
+          label="Monthly bonus point"
+          optional
+          hint="Normally computed (most points, then captains' lowest net). Set it here when the card-off can't be resolved from the app."
+        >
+          <select
+            value={form.bonusTeamId}
+            onChange={(e) => setForm({ ...form, bonusTeamId: e.target.value })}
+            className={inputClass}
+          >
+            <option value="">Automatic</option>
+            {leagueTeams.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </Field>
+      )}
 
       <ToggleList>
         <ToggleRow

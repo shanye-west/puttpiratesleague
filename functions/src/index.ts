@@ -1,5 +1,5 @@
 /**
- * Firebase Cloud Functions for Rowdy Cup PWA
+ * Firebase Cloud Functions for the Putt Pirates Golf PWA
  * 
  * This file orchestrates all cloud functions, importing shared logic from modules.
  * 
@@ -27,8 +27,12 @@ import {
   playersPerSide, 
   ensureSideSize, 
   normalizeHoles, 
-  defaultStatus 
+  defaultStatus,
+  countScoredHoles,
+  holeHasScore,
 } from "./helpers/matchHelpers.js";
+import { buildManualStatusAndResult, computeSig, usesManualResult, validateManualResult } from "./helpers/manualResult.js";
+import { matchPlayerIds } from "./helpers/roster.js";
 import {
   summarize,
   buildStatusAndResult,
@@ -94,6 +98,8 @@ export const seedMatchBoilerplate = onDocumentCreated("matches/{matchId}", async
     tournamentId, roundId,
     matchNumber: match.matchNumber ?? 0, // For ordering matches on Round page
     teamAPlayers: teamA, teamBPlayers: teamB,
+    // Denormalized for array-contains queries (auth fan-out, player props).
+    playerIds: matchPlayerIds({ teamAPlayers: teamA, teamBPlayers: teamB }).filter((pid) => !!pid),
     status: match.status ?? defaultStatus(),
     holes,
     _seededAt: FieldValue.serverTimestamp(),
@@ -269,8 +275,9 @@ export const computeMatchOnWrite = onDocumentWritten({ document: "matches/{match
   ];
   if (changed.every(k => ["status", "result", "_computeSig", "_lastComputed", "completed"].includes(k))) return;
 
-  const eventHolesSig = JSON.stringify(after.holes || {});
-  if (after._computeSig === eventHolesSig) return;
+  // The signature covers the holes AND any manual result (see helpers/
+  // manualResult.ts) — either changing must recompute.
+  if (after._computeSig === computeSig(after)) return;
 
   const roundId = after.roundId;
   if (!roundId) return;
@@ -309,34 +316,31 @@ export const computeMatchOnWrite = onDocumentWritten({ document: "matches/{match
     const cur = snap.data();
     if (!cur) return;
 
-    const curHolesSig = JSON.stringify(cur.holes || {});
-    if (cur._computeSig === curHolesSig) return; // derived state already current
+    const curSig = computeSig(cur);
+    if (cur._computeSig === curSig) return; // derived state already current
 
-    const summary = summarize(format, cur);
-    const { status, result } = buildStatusAndResult(summary);
-
-    // Check if all 18 holes have scores entered
-    const holesData = cur.holes || {};
-    let completedHolesCount = 0;
-    for (const key of Object.keys(holesData)) {
-      const holeNum = parseInt(key, 10);
-      if (holeNum >= 1 && holeNum <= 18) {
-        const input = holesData[key]?.input;
-        let hasScore = false;
-        if (format === "singles") {
-          hasScore = input?.teamAPlayerGross != null || input?.teamBPlayerGross != null;
-        } else if (format === "twoManScramble" || format === "fourManScramble") {
-          hasScore = input?.teamAGross != null || input?.teamBGross != null;
-        } else if (format === "twoManBestBall" || format === "twoManShamble") {
-          const aArr = input?.teamAPlayersGross;
-          const bArr = input?.teamBPlayersGross;
-          hasScore = (Array.isArray(aArr) && (aArr[0] != null || aArr[1] != null)) ||
-                     (Array.isArray(bArr) && (bArr[0] != null || bArr[1] != null));
-        }
-        if (hasScore) completedHolesCount++;
-      }
-    }
+    // Check how many of the 18 holes have scores entered
+    const completedHolesCount = countScoredHoles(format, cur.holes);
     const allHolesCompleted = completedHolesCount === 18;
+
+    // League (Putt Pirates): a match played off-app carries an admin-entered
+    // bare result instead of a card. With no hole scored, that result IS the
+    // match; the moment a hole is scored the card takes over again.
+    let status;
+    let result;
+    if (usesManualResult(cur, completedHolesCount)) {
+      let manual;
+      try {
+        manual = validateManualResult(cur.manualResult);
+      } catch (err) {
+        logger.warn(`computeMatchOnWrite: ignoring invalid manualResult on ${event.params.matchId}`, { error: String(err) });
+      }
+      ({ status, result } = manual
+        ? buildManualStatusAndResult(manual)
+        : buildStatusAndResult(summarize(format, cur)));
+    } else {
+      ({ status, result } = buildStatusAndResult(summarize(format, cur)));
+    }
 
     // Auto-complete match when it's closed AND all 18 holes are scored
     const shouldAutoComplete = status.closed && allHolesCompleted && !cur.completed;
@@ -355,11 +359,12 @@ export const computeMatchOnWrite = onDocumentWritten({ document: "matches/{match
     const updateData: any = {
       status,
       result,
-      _computeSig: curHolesSig,
+      _computeSig: curSig,
       _lastComputed: {
         format,
         roundId,
-        courseId: roundData?.courseId,
+        // League: a per-match course (set by setupMatchCard) wins over the round's.
+        courseId: cur.courseId || roundData?.courseId,
         pointsValue: roundData?.pointsValue ?? 1,
         day: roundData?.day ?? 0,
       },
@@ -413,7 +418,8 @@ export const updateMatchFacts = onDocumentWritten({ document: "matches/{matchId}
   const cachedData = after._lastComputed || {};
   let format: RoundFormat = (cachedData.format as RoundFormat) || "twoManBestBall";
   let points = cachedData.pointsValue ?? 1;
-  let courseId = cachedData.courseId || "";
+  // League: a per-match course (setupMatchCard) wins over the cached round course.
+  let courseId = after.courseId || cachedData.courseId || "";
   let day = cachedData.day ?? 0;
 
   // Only fetch round if cached data is incomplete (fallback for old matches)
@@ -455,6 +461,11 @@ export const updateMatchFacts = onDocumentWritten({ document: "matches/{matchId}
   
   // Get holes data for stats computation
   const holesData = after.holes || {};
+
+  // League (Putt Pirates): a result-only match has no card. Its facts carry the
+  // outcome/points (standings need them) but no hole, momentum, clutch or
+  // scoring stats — those are zeroed/omitted below so nothing is mis-badged.
+  const isManualResult = usesManualResult(after, countScoredHoles(format, holesData));
   
   // Fetch course data ONCE (consolidating two separate fetches)
   let courseHoles: { number: number; par: number }[] = [];
@@ -539,19 +550,7 @@ export const updateMatchFacts = onDocumentWritten({ document: "matches/{matchId}
   if (winningHole !== null) {
     for (const i of holesRange(holesData)) {
       if (i <= winningHole) continue;
-      const input = holesData[String(i)]?.input;
-      let hasScore = false;
-      if (format === "singles") {
-        hasScore = input?.teamAPlayerGross != null || input?.teamBPlayerGross != null;
-      } else if (format === "twoManScramble" || format === "fourManScramble") {
-        hasScore = input?.teamAGross != null || input?.teamBGross != null;
-      } else if (format === "twoManBestBall" || format === "twoManShamble") {
-        const aArr = input?.teamAPlayersGross;
-        const bArr = input?.teamBPlayersGross;
-        hasScore = (Array.isArray(aArr) && (aArr[0] != null || aArr[1] != null)) ||
-                   (Array.isArray(bArr) && (bArr[0] != null || bArr[1] != null));
-      }
-      if (hasScore) {
+      if (holeHasScore(format, holesData[String(i)]?.input)) {
         hasPostMatchData = true;
         break;
       }
@@ -917,16 +916,18 @@ export const updateMatchFacts = onDocumentWritten({ document: "matches/{matchId}
     if (result.winner === "AS") { outcome = "halve"; pts = points / 2; }
     else if (result.winner === team) { outcome = "win"; pts = points; }
 
-    const holesWon = team === "teamA" ? (result.holesWonA || 0) : (result.holesWonB || 0);
-    const holesLost = team === "teamA" ? (result.holesWonB || 0) : (result.holesWonA || 0);
-    const holesHalved = finalThru - holesWon - holesLost;
+    // A result-only match knows its margin but not which holes were won/lost/
+    // halved, nor whether anyone was ever behind — record nothing hole-shaped.
+    const holesWon = isManualResult ? 0 : team === "teamA" ? (result.holesWonA || 0) : (result.holesWonB || 0);
+    const holesLost = isManualResult ? 0 : team === "teamA" ? (result.holesWonB || 0) : (result.holesWonA || 0);
+    const holesHalved = isManualResult ? 0 : finalThru - holesWon - holesLost;
 
     const wasDown3PlusBack9 = team === "teamA" ? status.wasTeamADown3PlusBack9 : status.wasTeamAUp3PlusBack9;
     const wasUp3PlusBack9 = team === "teamA" ? status.wasTeamAUp3PlusBack9 : status.wasTeamADown3PlusBack9;
-    const comebackWin = outcome === "win" && wasDown3PlusBack9 === true;
-    const blownLead = outcome === "loss" && wasUp3PlusBack9 === true;
+    const comebackWin = !isManualResult && outcome === "win" && wasDown3PlusBack9 === true;
+    const blownLead = !isManualResult && outcome === "loss" && wasUp3PlusBack9 === true;
     
-    const wasNeverBehind = team === "teamA" ? wasTeamANeverBehind : wasTeamBNeverBehind;
+    const wasNeverBehind = !isManualResult && (team === "teamA" ? wasTeamANeverBehind : wasTeamBNeverBehind);
     
     const strokesGiven = Array.isArray(p.strokesReceived) 
       ? p.strokesReceived.reduce((sum: number, v: number) => sum + (v || 0), 0)
@@ -1152,7 +1153,7 @@ export const updateMatchFacts = onDocumentWritten({ document: "matches/{matchId}
     // 18-hole coursePar. Equals coursePar when all 18 are played.
     let parPlayed: number | null = null;
 
-    if (format === "twoManBestBall" || format === "singles") {
+    if ((format === "twoManBestBall" || format === "singles") && holesPlayedForPlayer > 0) {
       const grossSum = holePerformance.reduce((s, hh) => s + (typeof hh.gross === "number" ? hh.gross : 0), 0);
       totalGross = grossSum;
       parPlayed = parForPlayerHolesPlayed(holePerformance);
@@ -1231,6 +1232,9 @@ export const updateMatchFacts = onDocumentWritten({ document: "matches/{matchId}
       updatedAt: FieldValue.serverTimestamp(),
     };
     
+    // League: mark result-only facts so stats consumers can tell "0 holes" from "no card".
+    if (isManualResult) factData.manualResult = true;
+
     // Captain tracking - only add if true to avoid clutter
     if (isCaptain) factData.isCaptain = true;
     if (isCoCaptain) factData.isCoCaptain = true;
@@ -2174,6 +2178,9 @@ export const settleMatchBets = onDocumentWritten("matches/{matchId}", withTrigge
 // ============================================================================
 
 export { seedMatch, editMatch, recalculateMatchStrokes } from "./callables/matchOps.js";
+// League (Putt Pirates): per-match course/strokes set by the players; result-only matches.
+export { setupMatchCard } from "./callables/matchSetupOps.js";
+export { adminSetMatchResult, adminClearMatchResult } from "./callables/matchResultOps.js";
 export { recalculateAllStats, computeRoundRecap } from "./callables/statsOps.js";
 
 
@@ -2284,10 +2291,8 @@ export { postComment, deleteComment, toggleReaction } from "./callables/commentO
 export { registerPushToken, unregisterPushToken, setNotificationPrefs } from "./callables/pushOps.js";
 
 // ============================================================================
-// RULES OFFICIAL (AI, streaming)
-// The in-app AI rules official — a streaming callable that proxies to xAI/Grok
-// with the in-round rules handbook as a cached system prompt.
-// See rulesOfficial/askRulesOfficial.ts.
+// RULES OFFICIAL (AI, streaming) — NOT DEPLOYED for Putt Pirates.
+// The source stays in rulesOfficial/askRulesOfficial.ts, but it depends on the
+// XAI_API_KEY secret (and App Check) which this project doesn't provision, and
+// its handbook is Ryder-Cup format rules. Re-export here to bring it back.
 // ============================================================================
-
-export { askRulesOfficial } from "./rulesOfficial/askRulesOfficial.js";

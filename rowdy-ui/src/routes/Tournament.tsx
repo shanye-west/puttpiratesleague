@@ -14,6 +14,8 @@ import CaptainsMatchSection from "../components/captains/CaptainsMatchSection";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent } from "../components/ui/card";
 import { formatRoundType, getTournamentWinner } from "../utils";
+import { isLeagueTournament } from "../utils/leagueTeams";
+import LeagueHome from "../components/league/LeagueHome";
 // RedirectCountdown removed; show Go Home button instead
 
 /**
@@ -65,6 +67,17 @@ function TournamentComponent() {
   const tName = tournament?.name || "Tournament";
   const tSeries = tournament?.series;
   const tLogo = tournament?.tournamentLogo;
+
+  // A league season (Putt Pirates) has individual + team standings, not a
+  // two-sided Cup score — reuse the season home for past seasons too.
+  if (isLeagueTournament(tournament)) {
+    return (
+      <Layout title={tName} series={tSeries} showBack tournamentLogo={tLogo}>
+        <LeagueHome tournament={tournament} />
+      </Layout>
+    );
+  }
+
   const teamAColor = tournament.teamA?.color || "var(--team-a-default)";
   const teamBColor = tournament.teamB?.color || "var(--team-b-default)";
   const teamLinkA = `/teams?tournamentId=${encodeURIComponent(tournament.id)}&team=A`;

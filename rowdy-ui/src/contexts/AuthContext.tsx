@@ -19,7 +19,7 @@ import type { PlayerDoc } from "../types";
 // query in the local cache — on a cold-cache offline launch it fails and would
 // silently disable scoring. This hint lets us fall back to a direct doc lookup
 // (which the persistent cache can answer) so a returning player can still score.
-const LAST_PLAYER_KEY = "rowdycup:lastPlayer";
+const LAST_PLAYER_KEY = "puttpirates:lastPlayer";
 
 function savePlayerHint(uid: string, playerId: string) {
   try {

@@ -2,11 +2,10 @@ import { memo, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { doc, getDoc, getDocFromCache, getDocFromServer } from "firebase/firestore";
 import { ViewTransitionLink } from "../components/ViewTransitionLink";
-import { AlertTriangle, ClipboardList, ListChecks } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useRoundData } from "../hooks/useRoundData";
-import { canPlanPairings as canPlanPairingsFor } from "../hooks/usePairingsData";
 import { formatRoundType } from "../utils";
 import {
   getPlayerShortName as getPlayerShortNameFromLookup,
@@ -20,6 +19,9 @@ import OfflineImage from "../components/OfflineImage";
 import PlayerAvatar from "../components/PlayerAvatar";
 import { MatchStatusBadge, getMatchCardStyles } from "../components/MatchStatusBadge";
 import { HoleByHoleTracker } from "../components/HoleByHoleTracker";
+import { MonthMatchList } from "../components/league/MonthMatchList";
+import { isLeagueTournament, leagueTeamColor } from "../utils/leagueTeams";
+import { computeLeagueStandings, fmtPts } from "../utils/leagueStandings";
 import { RoundPageSkeleton } from "../components/Skeleton";
 // Badge removed from this file (was used for matches pill)
 import { Button } from "../components/ui/button";
@@ -28,7 +30,7 @@ import { cn } from "../lib/utils";
 
 function RoundComponent() {
   const { roundId } = useParams();
-  const { user, player } = useAuth();
+  const { user } = useAuth();
   const [hasRecap, setHasRecap] = useState(false);
   const [checkingRecap, setCheckingRecap] = useState(true);
   
@@ -136,29 +138,19 @@ function RoundComponent() {
   const tSeries = tournament?.series;
   const tLogo = tournament?.tournamentLogo;
   const courseName = course?.name || round.course?.name;
-  const roundLabel = round.day ? `Round ${round.day}` : "Round";
-
-  const hasGross = (round.skinsGrossPot ?? 0) > 0;
-  const hasNet = (round.skinsNetPot ?? 0) > 0;
-  const skinsEnabled = (round.format === "singles" || round.format === "twoManBestBall") && (hasGross || hasNet);
+  const roundLabel = round.name?.trim() || (round.day ? `Round ${round.day}` : "Round");
   const teamAColor = tournament?.teamA?.color || "var(--team-a-default)";
   const teamBColor = tournament?.teamB?.color || "var(--team-b-default)";
 
-  // Captains/co-captains and admins can run the live pairings draft. Show the
-  // entry point only to those roles (the page itself is captain/admin-gated),
-  // and only until the round's matches have been created.
-  const captainIds = [
-    tournament?.teamA?.captainId,
-    tournament?.teamA?.coCaptainId,
-    tournament?.teamB?.captainId,
-    tournament?.teamB?.coCaptainId,
-  ].filter(Boolean) as string[];
-  const canSeePairings =
-    !!player && (!!player.isAdmin || captainIds.includes(player.id)) && matches.length === 0;
-  // Planning is a wider audience than the draft: captains and admins, plus any
-  // player the admin has invited via tournament.planAccessPlayerIds. It also
-  // needs no draft doc to exist — that's the point of it.
-  const canPlanPairings = canPlanPairingsFor(player, tournament ?? null) && matches.length === 0;
+  // League season (Putt Pirates): the month's team points + bonus instead of the
+  // two-sided Cup header, and player-vs-player match cards.
+  const isLeague = isLeagueTournament(tournament);
+  const leagueTeams = tournament?.leagueTeams ?? [];
+  const monthStandings = isLeague
+    ? computeLeagueStandings({ rounds: [round], matchesByRound: { [round.id]: matches }, leagueTeams })
+    : null;
+  const monthBonusInfo = monthStandings?.bonusByRound[round.id];
+  const playedCount = matches.filter((m) => m.status?.closed === true).length;
 
   return (
     <Layout title={tName} series={tSeries} showBack tournamentLogo={tLogo}>
@@ -186,24 +178,13 @@ function RoundComponent() {
                   <div className="text-center">
                     <div className="text-2xl font-semibold text-foreground">{roundLabel}</div>
                   </div>
-                  <div className="flex items-center justify-end">
-                    {skinsEnabled && (
-                      <Button
-                        asChild
-                        size="sm"
-                        variant="outline"
-                        className="h-9 rounded-full px-4 bg-card/90 shadow-sm hover:bg-muted"
-                      >
-                        <ViewTransitionLink to={`/round/${round.id}/skins`}>
-                          Skins
-                        </ViewTransitionLink>
-                      </Button>
-                    )}
-                  </div>
+                  <div className="flex items-center justify-end" />
                 </div>
 
                 <div className="text-center">
-                  <div className="text-sm text-muted-foreground">{formatRoundType(round.format)}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {isLeague ? `${playedCount}/${matches.length} matches played` : formatRoundType(round.format)}
+                  </div>
                   {courseName && (
                     <div className="mt-2 text-xs text-muted-foreground">
                       {courseName}
@@ -212,6 +193,40 @@ function RoundComponent() {
                 </div>
               </div>
 
+              {isLeague && monthStandings ? (
+                <div className="rounded-xl border border-border/70 bg-card/80 p-3">
+                  <div className="mb-2 flex items-center justify-between text-[0.6rem] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span>Team points this month</span>
+                    <span>
+                      {monthBonusInfo?.teamId
+                        ? `Bonus: ${leagueTeams.find((t) => t.id === monthBonusInfo.teamId)?.name ?? ""}`
+                        : monthBonusInfo?.pending
+                          ? monthBonusInfo.reason === "captainNetUnavailable" ? "Bonus: captains' card-off TBD" : "Bonus: pending"
+                          : ""}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {monthStandings.teams.map((row) => {
+                      const team = leagueTeams.find((t) => t.id === row.teamId);
+                      const cell = monthStandings.grid[row.teamId]?.[round.id];
+                      const color = leagueTeamColor(team, leagueTeams);
+                      const projected = (cell?.projectedPoints ?? 0) - (cell?.points ?? 0);
+                      return (
+                        <div key={row.teamId} className="flex items-center justify-between gap-2 rounded-lg bg-muted/50 px-2.5 py-1.5">
+                          <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-foreground">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
+                            <span className="truncate">{team?.name ?? row.teamId}</span>
+                          </span>
+                          <span className="text-sm font-bold tabular-nums" style={{ color }}>
+                            {fmtPts(cell?.points ?? 0)}{cell?.bonus ? " + 1" : ""}
+                            {projected > 0 && <span className="ml-1 text-[0.6rem] font-semibold text-muted-foreground">(+{fmtPts(projected)})</span>}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl border border-border/70 bg-card/80 p-4">
                 <div className="flex flex-col items-center gap-1">
                   <ViewTransitionLink to={`/teams?tournamentId=${encodeURIComponent(tournament?.id || "")}&team=A`}>
@@ -253,36 +268,10 @@ function RoundComponent() {
                   </div>
                 </div>
               </div>
+              )}
             </CardContent>
           </Card>
         </section>
-
-        {(canSeePairings || canPlanPairings) && (
-          <section className="space-y-2">
-            {canSeePairings && (
-              <Button
-                asChild
-                variant="outline"
-                className="h-11 w-full rounded-xl bg-card/90 shadow-sm hover:bg-muted"
-              >
-                <ViewTransitionLink to={`/round/${round.id}/pairings`}>
-                  <ListChecks className="mr-2 h-4 w-4" /> Set pairings (captains' draft)
-                </ViewTransitionLink>
-              </Button>
-            )}
-            {canPlanPairings && (
-              <Button
-                asChild
-                variant="outline"
-                className="h-11 w-full rounded-xl bg-card/90 shadow-sm hover:bg-muted"
-              >
-                <ViewTransitionLink to={`/round/${round.id}/plan`}>
-                  <ClipboardList className="mr-2 h-4 w-4" /> Plan pairings (only you see it)
-                </ViewTransitionLink>
-              </Button>
-            )}
-          </section>
-        )}
 
         <section className="space-y-3">
             <div className="flex items-center px-1">
@@ -291,7 +280,16 @@ function RoundComponent() {
               </div>
             </div>
 
-          {matches.length === 0 ? (
+          {isLeague ? (
+            <MonthMatchList
+              matches={matches}
+              leagueTeams={leagueTeams}
+              nameOf={getPlayerName}
+              shortNameOf={getPlayerShortName}
+              showTracker
+              format={round.format ?? "singles"}
+            />
+          ) : matches.length === 0 ? (
             <Card className="border-border/80 bg-card/85">
               <CardContent className="py-8 text-center text-sm text-muted-foreground">
                 No matches scheduled.

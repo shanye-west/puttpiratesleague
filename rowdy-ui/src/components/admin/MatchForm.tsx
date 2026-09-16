@@ -181,13 +181,13 @@ export default function MatchForm({
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
           label="Match ID"
-          hint={isEdit ? "Fixed once a match exists." : "e.g. rowdyCup2026-R01M01-twoManBestBall"}
+          hint={isEdit ? "Fixed once a match exists." : "e.g. 2026PuttPirates-R03M01"}
         >
           <input
             type="text"
             value={matchId}
             onChange={(e) => setMatchId(e.target.value)}
-            placeholder="rowdyCup2026-R01M01-twoManBestBall"
+            placeholder="2026PuttPirates-R03M01"
             className={monoInputClass}
             readOnly={isEdit}
             required

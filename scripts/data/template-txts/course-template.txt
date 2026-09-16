@@ -1,4 +1,4 @@
-/rowdy-pwa/scripts
+scripts/
 npx ts-node seed-course.ts --input data/course.json
 
 npx ts-node seed-course.ts --input data/course.json --force (if needed)

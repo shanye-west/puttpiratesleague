@@ -13,7 +13,7 @@ type LayoutContextValue = {
 };
 
 const defaultConfig: LayoutConfig = {
-  title: "Rowdy Cup",
+  title: "Putt Pirates",
   showBack: false,
 };
 

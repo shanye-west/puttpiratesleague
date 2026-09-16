@@ -4,7 +4,7 @@
  * Fetches aggregated player stats by tournament series from Firestore.
  * 
  * Usage:
- *   const { stats, loading, error } = usePlayerStats(playerId, "rowdyCup");
+ *   const { stats, loading, error } = usePlayerStats(playerId, "puttPirates");
  *   const { allSeriesStats, loading } = usePlayerStatsBySeries(playerId);
  */
 

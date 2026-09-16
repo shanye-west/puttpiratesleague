@@ -1,8 +1,41 @@
-LAST UPDATED ON FRI JUN 12, 2026
+LAST UPDATED ON WED SEP 16, 2026
 
-# Rowdy Cup Scripts
+# Putt Pirates Golf Scripts
 
-Scripts for seeding and managing Firestore data for the Rowdy Cup PWA.
+Scripts for seeding and managing Firestore data for the Putt Pirates Golf PWA
+(Firebase project **`puttpiratesgolf`** — never point these at any other project).
+
+## Season seed (Putt Pirates)
+
+`seed-putt-pirates-2026.ts` creates the whole 2026 season in one go and refuses
+to run unless `service-account.json` belongs to `puttpiratesgolf`:
+
+```bash
+cd scripts && npm install
+npx ts-node seed-putt-pirates-2026.ts                 # dry run — prints every doc it would write
+npx ts-node seed-putt-pirates-2026.ts --commit        # pass 1: 16 players, tournaments/2026PuttPirates
+                                                      #   (active, 4 league teams), 10 rounds (months),
+                                                      #   80 matches (zero strokes, no course yet)
+# bootstrap the first admin at the same time (the auth user must already exist):
+npx ts-node seed-putt-pirates-2026.ts --commit --admin-email you@example.com --admin-player pNickPetersen
+```
+
+**Result backfill (pass 2)** — for matches already played off-app. Copy
+`data/putt-pirates-2026-results-template.json` to `data/putt-pirates-2026-results.json`,
+fill in each match's `winner` (`teamA` = first-named player, `teamB`, or `AS`),
+`margin` and `thru` (3&2 → margin 3, thru 16), then — **after** pass 1's create
+triggers have run (~30s; the script checks `_seededAt`):
+
+```bash
+npx ts-node seed-putt-pirates-2026.ts --commit --results data/putt-pirates-2026-results.json
+```
+
+Each entry is written as `manualResult` and the match closes from it. Afterwards
+lock the finished months from `/admin` so they become static reads.
+
+> The Rowdy Cup-only scripts that hardcoded that project (`import-rowdycup-*`,
+> `seed-test-tournament-2026`, `setup-test-auth-2026`, `swap-teams`, …) were
+> removed from this repo so nothing here can ever point at `rowdy-pwa`.
 
 > **⚠️ Emergency backup only.** Routine admin work now lives in the in-app
 > Admin UI (`/admin` — tournaments, rounds, matches, players, courses, auth
@@ -15,7 +48,7 @@ Scripts for seeding and managing Firestore data for the Rowdy Cup PWA.
 ## Setup
 
 1. Download your Firebase service account key from Firebase Console → Project Settings → Service Accounts → Generate new private key
-2. Save it as `service-account.json` in the project root (one level up from this folder)
+2. Save it as `service-account.json` in the project root (one level up from this folder). It must be the **`puttpiratesgolf`** key.
 3. Install dependencies:
    ```bash
    cd scripts

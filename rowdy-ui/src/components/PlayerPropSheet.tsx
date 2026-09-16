@@ -24,10 +24,11 @@ import { betsApi } from "../api/bets";
 import type { CreateBetOfferRequest } from "../api/adminContracts";
 import type { BetDoc, BetOverUnderMetric } from "../types";
 
-// Each round is worth 1 point. Points O/U runs every half-point 0.5–3.5, so the
-// whole-point lines (1/2/3) can push; Wins O/U uses half-points only (no push).
-const POINT_LINES = [0.5, 1, 1.5, 2, 2.5, 3, 3.5];
-const WIN_LINES = [0.5, 1.5, 2.5, 3.5];
+// League season: 10 monthly matches at 1 point each. Points O/U runs every
+// half-point 0.5–9.5, so the whole-point lines can push; Wins O/U uses
+// half-points only (no push).
+const POINT_LINES = Array.from({ length: 19 }, (_, i) => (i + 1) / 2); // 0.5 … 9.5
+const WIN_LINES = Array.from({ length: 10 }, (_, i) => i + 0.5);        // 0.5 … 9.5
 const QUICK_AMOUNTS = [10, 20, 50, 100];
 const STEP = 5;
 const OVER_COLOR = "#059669"; // emerald-600
@@ -49,6 +50,8 @@ export interface PlayerPropSheetProps {
   bettorName: (pid?: string) => string;
   /** Take an existing open offer. Return the action promise so Take buttons can lock while in flight. */
   onTake: (b: BetDoc) => void | Promise<unknown>;
+  /** League season: the matchup market (closed once play starts) is hidden. */
+  hideMatchup?: boolean;
 }
 
 export default function PlayerPropSheet({
@@ -61,10 +64,11 @@ export default function PlayerPropSheet({
   rosterOptions,
   bettorName,
   onTake,
+  hideMatchup = false,
 }: PlayerPropSheetProps) {
   const { showToast } = useToast();
 
-  const [propType, setPropType] = useState<PropType>("matchup");
+  const [propType, setPropType] = useState<PropType>(hideMatchup ? "points" : "matchup");
   // Matchup
   const [subjectAId, setSubjectAId] = useState("");
   const [subjectBId, setSubjectBId] = useState("");
@@ -215,7 +219,7 @@ export default function PlayerPropSheet({
           <div className="flex gap-1 rounded-full bg-muted p-0.5">
             {(
               [
-                { id: "matchup", label: "Matchup" },
+                ...(hideMatchup ? [] : [{ id: "matchup", label: "Matchup" }]),
                 { id: "points", label: "Points O/U" },
                 { id: "wins", label: "Wins O/U" },
               ] as { id: PropType; label: string }[]

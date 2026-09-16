@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { collection, getDocs } from "firebase/firestore";
-import { ChevronDown, ChevronUp, ExternalLink, Lock, Plus, Users } from "lucide-react";
+import { ChevronDown, ChevronUp, ExternalLink, Lock, Plus } from "lucide-react";
 import { db } from "../../firebase";
 import AdminPage, { AdminNotFound } from "../../components/admin/AdminPage";
 import AdminSection from "../../components/admin/AdminSection";
@@ -122,7 +122,7 @@ export default function RoundAdmin() {
   const breadcrumbs = [
     { label: "Admin", to: "/admin" },
     { label: tournament?.name ?? "Tournament", to: `/admin/t/${tournamentId}` },
-    { label: isNew ? "New round" : `Day ${round?.day ?? "?"}` },
+    { label: isNew ? "New round" : round?.name?.trim() || `Round ${round?.day ?? "?"}` },
   ];
 
   if (ctxLoading || coursesLoading) {
@@ -152,14 +152,15 @@ export default function RoundAdmin() {
         breadcrumbs={breadcrumbs}
         eyebrow={tournamentLabel}
         title="New round"
-        description="One round per day of play. You can add its matches — or run the captains' draft — once it exists."
+        description="One round per month of the season. Add its matches once it exists (or run the season seed script)."
         error={error}
       >
-        <AdminSection title="Round settings" description="Format, course, points, drive tracking, and skins.">
+        <AdminSection title="Round settings" description="Name (the month), order, format and points. Leave the course blank — players pick theirs per match.">
           <RoundForm
             key="new"
             defaultDay={rounds.length + 1}
             courses={courses}
+            leagueTeams={tournament?.leagueTeams}
             showRoundIdInput
             submitting={submitting}
             submitLabel="Create round"
@@ -195,8 +196,8 @@ export default function RoundAdmin() {
       headerTitle={tournamentLabel}
       breadcrumbs={breadcrumbs}
       eyebrow={tournamentLabel}
-      title={`Day ${round!.day} — ${formatRoundType(round!.format)}`}
-      description={course ? `${course.name}${course.tees ? ` · ${course.tees} tees` : ""} · par ${course.par ?? "?"}` : "No course assigned yet."}
+      title={`${round!.name?.trim() || `Round ${round!.day}`} — ${formatRoundType(round!.format)}`}
+      description={course ? `${course.name}${course.tees ? ` · ${course.tees} tees` : ""} · par ${course.par ?? "?"}` : "Players pick their own course per match."}
       badges={
         <>
           {round!.locked ? (
@@ -253,23 +254,9 @@ export default function RoundAdmin() {
           ))}
           {matches.length === 0 && (
             <EmptyRow>
-              No matches yet — run the pairings draft below, or add them by hand.
+              No matches yet — add them by hand (one per pairing this month).
             </EmptyRow>
           )}
-        </div>
-      </AdminSection>
-
-      <AdminSection
-        title="Pairings draft"
-        description="Run the live captains' snake draft to set this round's matchups, then create the matches automatically."
-      >
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant={matches.length === 0 ? "default" : "outline"}>
-            <Link to={`/round/${roundId}/pairings`}>
-              <Users className="h-4 w-4" />
-              Open pairings draft
-            </Link>
-          </Button>
         </div>
       </AdminSection>
 
@@ -296,7 +283,7 @@ export default function RoundAdmin() {
 
       <AdminSection
         title="Round settings"
-        description="Format, course, points, drive tracking, skins, and the round lock."
+        description="Name, order, format, points, the monthly bonus override, and the round lock."
         actions={
           <Button
             type="button"
@@ -316,6 +303,7 @@ export default function RoundAdmin() {
             initial={round}
             defaultDay={rounds.length + 1}
             courses={courses}
+            leagueTeams={tournament?.leagueTeams}
             submitting={submitting}
             submitLabel="Save round"
             onSubmit={handleSubmit}

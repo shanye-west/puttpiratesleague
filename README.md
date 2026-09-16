@@ -1,9 +1,9 @@
-# Rowdy Cup PWA 🏌️
+# Putt Pirates Golf PWA 🏴‍☠️⛳
 
-A mobile-first Progressive Web App for a **12v12, Ryder-Cup–style golf tournament**. Players enter gross scores on their phones; the app computes net scores, hole winners, live match status, and full historical stats in real time. Everyone else watches live, read-only.
+A mobile-first Progressive Web App for **Putt Pirates Golf**, a season-long handicapped singles match-play league: 16 players, 10 monthly matches (March–December), 4 league teams of 4. Players set up each match (course + course handicaps), enter gross scores on their phones, and the app computes net scoring, hole winners, live match status, individual and team standings, and season stats in real time. Everyone else watches live, read-only.
 
-- **Live app:** [app.rowdycup.com](https://app.rowdycup.com) &nbsp;·&nbsp; Marketing site: [www.rowdycup.com](https://www.rowdycup.com) *(separate)*
-- **In production** for the annual Rowdy Cup. The same engine also runs a "Christmas Classic" series.
+- **Live app:** [puttpiratesgolf.web.app](https://puttpiratesgolf.web.app)
+- **Lineage:** built on the Rowdy Cup PWA engine (a Ryder-Cup style app). The Cup-only features are hidden here; see [AGENTS.md](AGENTS.md).
 
 > **AI agents / coding assistants:** read [AGENTS.md](AGENTS.md) — it's the canonical technical guide.
 
@@ -11,18 +11,17 @@ A mobile-first Progressive Web App for a **12v12, Ryder-Cup–style golf tournam
 
 ## What it does
 
-- **Live match-play scoring** in four formats — Singles, Two-Man Best Ball, Two-Man Shamble, Two-Man Scramble — with automatic net scoring, hole winners, dormie/early-close logic, and per-hole stroke handicaps.
-- **Cup leaderboard** with a live score tracker (points to win, confirmed vs. projected).
-- **Round pages & recaps** — schedule, per-round scores, skins games (gross/net pots), and rich Round Recaps (scoring leaders, per-hole averages, vs-all records).
-- **Teams & rosters** by tier (A/B/C/D), team colors and logos.
-- **Player profiles** — lifetime and per-series records, format breakdowns, badges, head-to-head.
-- **Tournament history** — every past event, read-only.
-- **Captains' live snake-draft** for setting pairings, and a pre-draft **Draft Pool** dashboard.
-- **Sportsbook** — peer-to-peer wagers (match bets, over/unders, round & futures markets) with an in-play view and a settle-up ledger.
-- **Chat & trash talk** — match threads and a tournament-wide feed with emoji reactions and replies.
-- **Push notifications** (chat, bets, match & tournament events) with per-category preferences.
+- **Live singles match-play scoring** with automatic net scoring, hole winners, dormie/early-close logic, and per-hole handicap strokes (the higher handicap gets the difference).
+- **Set up match** — the two players pick their course and enter their course handicaps for the day; strokes are placed on the hardest holes.
+- **League standings** — individual MP/W/L/T/points with the playoff cut (top 4 + ties), team standings with the monthly bonus point, and a team × month grid.
+- **Result-only matches** — an admin can record the outcome of a match played off-app (no card) so standings stay complete.
+- **Player profiles** — lifetime and per-season records, format breakdowns, badges.
+- **Season history** — every past season, read-only.
+- **Sportsbook** — peer-to-peer wagers on match winners and season-long player props, with a settle-up ledger.
+- **Chat & trash talk** — match threads and a league-wide feed with emoji reactions and replies.
+- **Push notifications** (chat, bets, match results, month complete) with per-category preferences.
 - **Installable PWA** — offline-tolerant scoring that queues and syncs on reconnect; auto-updates after deploys.
-- **Admin console** (`/admin`) — manage tournaments, rounds, matches, players, courses, handicaps, locks, and score corrections.
+- **Admin console** (`/admin`) — seasons, months (rounds), matches, league teams, players, courses, locks, score corrections, manual results.
 
 ## Tech stack
 
@@ -75,7 +74,7 @@ npm run test:run   # vitest (scoring + stats suites)
 
 ## Deploying
 
-> ⚠️ **There is only one Firebase project: production (`rowdy-pwa`).** No staging exists — every deploy hits **live tournament data**. Build first (there are no predeploy build hooks) and double-check before deploying.
+> ⚠️ **There is only one Firebase project: production (`puttpiratesgolf`).** No staging exists — every deploy hits **live league data**. Build first (there are no predeploy build hooks), check `firebase use` prints `puttpiratesgolf`, and double-check before deploying. Never deploy this repo to the Rowdy Cup project.
 
 ```bash
 # Frontend
@@ -91,13 +90,13 @@ firebase deploy --only firestore:indexes
 
 ## How the app works (in one breath)
 
-Players write a gross score to a single field (`matches/{id}.holes.{N}.input`). A Cloud Function recomputes match `status` and `result` on every write. When a match closes, per-player stat records are written and rolled up into lifetime/per-series aggregates. The UI subscribes to Firestore in real time, so scores, standings, and stats update live on every phone. Security rules keep the whole database public-read while allowing players to write **only** their own hole scores; everything else is written server-side.
+Players write a gross score to a single field (`matches/{id}.holes.{N}.input`). A Cloud Function recomputes match `status` and `result` on every write (or, for a match played off-app, from the admin-entered result). When a match closes, per-player stat records are written and rolled up into lifetime/per-season aggregates. The UI subscribes to Firestore in real time and computes the league standings client-side, so scores, standings, and stats update live on every phone. Security rules keep the whole database public-read while allowing players to write **only** their own hole scores; everything else (course, strokes, results, teams) is written server-side through callables.
 
 Full data model, collection reference, scoring contracts, and the Cloud Functions map are in **[AGENTS.md](AGENTS.md)**.
 
-## For tournament admins
+## For league admins
 
-Day-to-day setup lives in the in-app **Admin console** at `/admin` (admin accounts only): create/edit tournaments, rounds, matches, players, and courses; set handicaps; lock/unlock rounds and matches; override scores; and recompute stats. The [`scripts/`](scripts/) folder holds break-glass equivalents (bulk seeding, auth-account linking, exports) for when the UI can't do something or auth is down mid-event — see [`scripts/README.md`](scripts/README.md), including the player onboarding / login flow.
+Day-to-day setup lives in the in-app **Admin console** at `/admin` (admin accounts only): seasons and their league teams, months (rounds), matches, players, and courses; lock/unlock months and matches; override scores; enter result-only matches; and recompute stats. The [`scripts/`](scripts/) folder holds the one-time **season seed** (`seed-putt-pirates-2026.ts`: 16 players, 10 months, 80 matches, result backfill) plus break-glass equivalents — see [`scripts/README.md`](scripts/README.md), including the player onboarding / login flow.
 
 ## Further reading
 

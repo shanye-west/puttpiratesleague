@@ -1,5 +1,5 @@
 /**
- * Shared constants for the Rowdy Cup PWA
+ * Shared constants for the Putt Pirates Golf PWA
  */
 
 // =============================================================================

@@ -72,3 +72,35 @@ export function computeTeamsWithStrokes(
     courseHandicaps,
   };
 }
+
+export interface PlayerWithCourseHandicap {
+  playerId: string;
+  /** Integer course handicap for the day, as read off the player's GHIN app. */
+  courseHandicap: number;
+}
+
+/**
+ * Putt Pirates variant: players type their COURSE handicap for the day (already
+ * adjusted for the tees they're playing), so there is no index→course-handicap
+ * conversion. Same "spin down from the lowest" as computeTeamsWithStrokes —
+ * in singles that is simply "the higher handicap gets the difference".
+ */
+export function computeTeamsWithStrokesFromCourseHandicaps(
+  teamAPlayers: PlayerWithCourseHandicap[],
+  teamBPlayers: PlayerWithCourseHandicap[],
+  course: Pick<CourseForStrokes, "holes">
+): TeamsWithStrokes {
+  const courseHandicaps = [...teamAPlayers, ...teamBPlayers].map((p) => Math.round(p.courseHandicap));
+  const lowestHandicap = Math.min(...courseHandicaps);
+
+  const withStrokes = (p: PlayerWithCourseHandicap, overallIdx: number): PlayerWithStrokes => ({
+    playerId: p.playerId,
+    strokesReceived: calculateStrokesReceived(courseHandicaps[overallIdx] - lowestHandicap, course.holes),
+  });
+
+  return {
+    teamAPlayersWithStrokes: teamAPlayers.map((p, idx) => withStrokes(p, idx)),
+    teamBPlayersWithStrokes: teamBPlayers.map((p, idx) => withStrokes(p, teamAPlayers.length + idx)),
+    courseHandicaps,
+  };
+}

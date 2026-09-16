@@ -18,7 +18,6 @@ export function ScorecardTableHeader({
   holes,
   closingHole,
   totals,
-  tSeries,
   courseTees,
 }: ScorecardTableHeaderProps) {
   const cellWidth = SCORECARD_CELL_WIDTH;
@@ -45,7 +44,7 @@ export function ScorecardTableHeader({
     <thead>
       {/* HEADER ROW - Hole Numbers: 1-9 | OUT | 10-18 | IN | TOT */}
       <tr style={{ 
-        backgroundColor: tSeries === "christmasClassic" ? "#b8860b" : "#1e293b",
+        backgroundColor: "#1e293b",
         color: "white" 
       }}>
         <th 
@@ -53,7 +52,7 @@ export function ScorecardTableHeader({
           style={{ 
             width: labelWidth, 
             minWidth: labelWidth,
-            backgroundColor: tSeries === "christmasClassic" ? "#b8860b" : "#1e293b"
+            backgroundColor: "#1e293b"
           }}
         >
           HOLE
@@ -73,8 +72,8 @@ export function ScorecardTableHeader({
           style={{ 
             width: totalColWidth, 
             minWidth: totalColWidth,
-            backgroundColor: tSeries === "christmasClassic" ? "#996f00" : "#334155",
-            borderColor: tSeries === "christmasClassic" ? "#8b6914" : "#475569"
+            backgroundColor: "#334155",
+            borderColor: "#475569"
           }}
         >OUT</th>
         {/* Back 9 - post-match cells have border and tint */}
@@ -89,7 +88,7 @@ export function ScorecardTableHeader({
               style={{ 
                 width: cellWidth, 
                 minWidth: cellWidth,
-                borderColor: tSeries === "christmasClassic" ? "#8b6914" : "#475569",
+                borderColor: "#475569",
                 ...(isPostMatch ? { opacity: 0.7 } : {}),
               }}
             >
@@ -102,8 +101,8 @@ export function ScorecardTableHeader({
           style={{ 
             width: totalColWidth, 
             minWidth: totalColWidth,
-            backgroundColor: tSeries === "christmasClassic" ? "#996f00" : "#334155",
-            borderColor: tSeries === "christmasClassic" ? "#8b6914" : "#475569"
+            backgroundColor: "#334155",
+            borderColor: "#475569"
           }}
         >IN</th>
         <th 
@@ -111,7 +110,7 @@ export function ScorecardTableHeader({
           style={{ 
             width: totalColWidth, 
             minWidth: totalColWidth,
-            backgroundColor: tSeries === "christmasClassic" ? "#8b6914" : "#475569"
+            backgroundColor: "#475569"
           }}
         >TOT</th>
       </tr>

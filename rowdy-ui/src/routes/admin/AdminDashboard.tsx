@@ -36,7 +36,7 @@ export default function AdminDashboard() {
   const [newId, setNewId] = useState("");
   const [newName, setNewName] = useState("");
   const [newYear, setNewYear] = useState(String(new Date().getFullYear()));
-  const [newSeries, setNewSeries] = useState("rowdyCup");
+  const [newSeries, setNewSeries] = useState("puttPirates");
   const [newTest, setNewTest] = useState(false);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -204,7 +204,7 @@ export default function AdminDashboard() {
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="Rowdy Cup 2027"
+              placeholder="2027 Putt Pirates"
               className={inputClass}
               required
             />
@@ -226,8 +226,7 @@ export default function AdminDashboard() {
                 className={inputClass}
                 required
               >
-                <option value="rowdyCup">Rowdy Cup</option>
-                <option value="christmasClassic">Christmas Classic</option>
+                <option value="puttPirates">Putt Pirates</option>
               </select>
             </Field>
           </div>
@@ -236,7 +235,7 @@ export default function AdminDashboard() {
               type="text"
               value={newId}
               onChange={(e) => setNewId(e.target.value)}
-              placeholder="e.g. 2027RowdyCup"
+              placeholder="e.g. 2027PuttPirates"
               className={monoInputClass}
             />
           </Field>

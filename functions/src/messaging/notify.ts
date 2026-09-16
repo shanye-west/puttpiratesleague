@@ -1,5 +1,5 @@
 /**
- * Web-push fan-out for the Rowdy Cup app.
+ * Web-push fan-out for the Putt Pirates Golf app.
  *
  * `notify()` does two things for a set of recipient players:
  *   1. Writes a per-recipient in-app notification doc under

@@ -8,23 +8,21 @@ import LastUpdated from "../components/LastUpdated";
 import OfflineImage from "../components/OfflineImage";
 import { getTournamentWinner } from "../utils";
 // TeamName removed from history list (only logos shown)
-import type { TournamentDoc, RoundDoc } from "../types";
+import type { TournamentDoc, RoundDoc, TournamentSeries } from "../types";
 
 type TournamentWinner = { winnerKey: "teamA" | "teamB"; viaTiebreaker: boolean } | null;
 
-type TournamentSeries = "rowdyCup" | "christmasClassic";
 
 const SERIES_CONFIG: Record<TournamentSeries, { label: string; icon: string; color: string }> = {
   // Use public assets for series logos
-  rowdyCup: { label: "Rowdy Cup", icon: "/images/rc-logo.png", color: "var(--brand-primary)" },
-  christmasClassic: { label: "Christmas Classic", icon: "/images/rowdycup-logo-christmas.svg", color: "#dc2626" },
+  puttPirates: { label: "Putt Pirates", icon: "/images/puttpirates-logo.svg", color: "var(--brand-primary)" },
 };
 
 export default function History() {
   const [loading, setLoading] = useState(true);
   const [tournaments, setTournaments] = useState<TournamentDoc[]>([]);
   const [winnersByTournament, setWinnersByTournament] = useState<Record<string, TournamentWinner>>({});
-  const [selectedSeries, setSelectedSeries] = useState<TournamentSeries>("rowdyCup");
+  const [selectedSeries, setSelectedSeries] = useState<TournamentSeries>("puttPirates");
   // A failed read used to fall through to "No past tournaments found.", which
   // reads as fact rather than as a connection problem. Tracked separately so a
   // dropped signal at the course says so and offers a retry.
@@ -137,6 +135,12 @@ export default function History() {
 
         const winners: Record<string, TournamentWinner> = {};
         for (const t of tournaments) {
+          // A league season has 16 individual + 4 team standings, not a
+          // two-sided champion — leave it unmarked here.
+          if (Array.isArray(t.leagueTeams) && t.leagueTeams.length > 0) {
+            winners[t.id] = null;
+            continue;
+          }
           const a = acc[t.id];
           const totalPts = t.totalPointsAvailable ?? a.totalPts;
           winners[t.id] = getTournamentWinner(t.tiebreakerWinner, a.aConf, a.bConf, totalPts);
@@ -213,7 +217,7 @@ export default function History() {
                   <OfflineImage
                     src={config.icon}
                     alt={config.label}
-                    fallbackIcon={series === "rowdyCup" ? "🏆" : "🎄"}
+                    fallbackIcon="🏴‍☠️"
                     style={{ width: 36, height: 36, objectFit: "contain" }}
                   />
                   <span style={{ 
@@ -249,7 +253,7 @@ export default function History() {
             <OfflineImage
               src={SERIES_CONFIG[availableSeries[0]].icon}
               alt={SERIES_CONFIG[availableSeries[0]].label}
-              fallbackIcon={availableSeries[0] === "rowdyCup" ? "🏆" : "🎄"}
+              fallbackIcon="🏴‍☠️"
               style={{ width: 28, height: 28, objectFit: "contain" }}
             />
             <span style={{ 

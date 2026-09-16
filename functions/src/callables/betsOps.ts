@@ -141,6 +141,24 @@ async function isTournamentStarted(tournamentId: string): Promise<boolean> {
   return snap.docs.some((d) => matchStartedPlay(d.data()));
 }
 
+/**
+ * League player props (points / wins over a season) stay open as long as the
+ * subject still has an unplayed match — the season is months long and a
+ * "tournament started" gate would shut the market on day one. Closed once every
+ * match the player is in has closed (or none exist).
+ */
+async function isPlayerPropClosed(tournamentId: string, subjectId: string | undefined): Promise<boolean> {
+  if (!subjectId) return true;
+  const snap = await db()
+    .collection("matches")
+    .where("tournamentId", "==", tournamentId)
+    .where("playerIds", "array-contains", subjectId)
+    .select("status")
+    .get();
+  if (snap.empty) return true;
+  return snap.docs.every((d) => d.data().status?.closed === true);
+}
+
 /** True once any match in a round has begun — used to lock round/session betting. */
 async function isRoundStarted(roundId: string): Promise<boolean> {
   const snap = await db()
@@ -202,16 +220,16 @@ async function isCaptainsMarketClosed(
  * against the race window.
  */
 async function marketClosed(
-  bet: Pick<BetDoc, "market" | "matchId" | "roundId" | "tournamentId" | "metric" | "captainsRoundNumber">
+  bet: Pick<BetDoc, "market" | "matchId" | "roundId" | "tournamentId" | "metric" | "captainsRoundNumber" | "subjectId">
 ): Promise<boolean> {
   if (bet.market === "match") return isMatchClosed(bet.matchId);
   if (bet.market === "round") return bet.roundId ? isRoundStarted(bet.roundId) : true;
   if (isCaptainsMarket(bet.market, bet.metric)) return isCaptainsMarketClosed(bet);
   if (bet.market === "overUnder") {
     // Match-scoped over/unders close with their match; player-points props are
-    // tournament-scoped and close when the tournament starts.
+    // season-scoped and close once the subject has no match left to play.
     if (bet.metric && MATCH_SCOPED_METRICS.includes(bet.metric)) return isMatchClosed(bet.matchId);
-    return isTournamentStarted(bet.tournamentId);
+    return isPlayerPropClosed(bet.tournamentId, bet.subjectId);
   }
   // cupFuture + playerMatchup are tournament-scoped.
   return isTournamentStarted(bet.tournamentId);
@@ -345,8 +363,8 @@ async function createBet(
       // playerTournamentPoints / playerTournamentWins: tournament-scoped prop
       // on a single player.
       subjectId = await requirePlayerExists(data.subjectId, "subjectId");
-      if (await isTournamentStarted(tournamentId)) {
-        throw new HttpsError("failed-precondition", "Player props betting is closed — the tournament has started");
+      if (await isPlayerPropClosed(tournamentId, subjectId)) {
+        throw new HttpsError("failed-precondition", "Player props betting is closed — that player has no matches left");
       }
     }
   } else if (market === "playerMatchup") {

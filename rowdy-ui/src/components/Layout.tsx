@@ -7,7 +7,6 @@ import {
   Shield,
   Trophy,
   History,
-  ClipboardList,
   LogOut,
   LogIn,
   Wifi,
@@ -15,8 +14,6 @@ import {
   Download,
   Settings,
   Loader2,
-  BookOpen,
-  Flag,
 } from "lucide-react";
 import PullToRefresh from "./PullToRefresh";
 import LoadingScreen from "./LoadingScreen";
@@ -31,7 +28,6 @@ import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useInstallPrompt } from "../hooks/useInstallPrompt";
 import { InstallGuideModal } from "./InstallGuideModal";
 import { isIOS, isStandalone } from "../messaging";
-import { useTournamentContextOptional } from "../contexts/TournamentContext";
 import { useOnlineStatusWithHistory } from "../hooks/useOnlineStatus";
 import { useSyncFlush } from "../hooks/useSyncFlush";
 import { useLayout } from "../contexts/LayoutContext";
@@ -40,15 +36,9 @@ import { useScrollRestoration } from "../hooks/useScrollRestoration";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 
-// Fallback destination for the "Rules Official" menu link when a tournament has
-// NOT enabled the in-app Grok chat (tournament.rulesOfficialUseGrok). This is the
-// free, shared NotebookLM notebook used for pre-round rules Q&A.
-const RULES_NOTEBOOKLM_URL =
-  "https://notebooklm.google.com/notebook/630e0ae9-191c-44e8-b7e2-8af132884afa";
-
 type LayoutProps = {
   title: string;
-  series?: string; // "rowdyCup" | "christmasClassic"
+  series?: string; // "puttPirates"
   showBack?: boolean;
   tournamentLogo?: string;
   children: React.ReactNode;
@@ -70,24 +60,6 @@ export function LayoutShell({ children }: LayoutShellProps) {
   // Offer "Install app" whenever the app isn't already installed and we can either
   // fire the native prompt (Android/Chromium) or walk an iPhone user through it.
   const showInstall = !isStandalone() && (canInstall || isIOS());
-  const tournamentCtx = useTournamentContextOptional();
-  const draftPoolCount = tournamentCtx?.tournament?.draftPool
-    ? Object.keys(tournamentCtx.tournament.draftPool).length
-    : 0;
-  const showDraftPool = draftPoolCount > 0 && !tournamentCtx?.tournament?.hideDraftPool;
-  // Side events (the optional, for-fun 9-hole games) are deliberately kept off
-  // the tournament home page — the menu is their only entry point. The list is
-  // denormalized onto the tournament doc by the sideEventOps callables, so this
-  // costs no extra reads on any page.
-  const sideEvents = (tournamentCtx?.tournament?.sideEvents ?? []).filter((e) => e && !e.hidden);
-  // When true, the Rules Official menu link opens the in-app Grok chat; otherwise
-  // it links out to the free NotebookLM notebook (see RULES_NOTEBOOKLM_URL).
-  // Open to every roster player when the tournament flag is on. Gating on `player`
-  // (signed in AND linked to a roster player) rather than just `user` mirrors the
-  // server-side requirePlayer gate on the askRulesOfficial callable — so anyone who
-  // sees this link can actually use it, and signed-out/unlinked visitors fall back
-  // to the free NotebookLM notebook instead of hitting a dead end.
-  const rulesUseGrok = !!tournamentCtx?.tournament?.rulesOfficialUseGrok && !!player;
   const { isOnline } = useOnlineStatusWithHistory();
   // Global write-queue drain state, surfaced as a reconnect banner below.
   const flushState = useSyncFlush(isOnline);
@@ -148,11 +120,11 @@ export function LayoutShell({ children }: LayoutShellProps) {
 
   // --- THEME ENGINE ---
   useEffect(() => {
-    const isChristmas = series === "christmasClassic";
-    document.body.classList.toggle("theme-christmas", isChristmas);
-    // Keep the live status-bar / toolbar tint in sync with the active theme.
+    // Single series today (puttPirates); the hook stays so a future series can
+    // swap a body class + status-bar tint the way the Christmas Classic once did.
+    document.body.classList.remove("theme-christmas");
     const meta = document.querySelector('meta[name="theme-color"]');
-    meta?.setAttribute("content", isChristmas ? "#ef211c" : "#132448");
+    meta?.setAttribute("content", "#0b3d3a");
   }, [series]);
 
   // Close menu when tapping outside it (tapping the bell counts as outside, so
@@ -206,11 +178,7 @@ export function LayoutShell({ children }: LayoutShellProps) {
               src={tournamentLogo}
               alt="Tournament Logo"
               fallbackIcon="⛳"
-              fallbackSrc={
-                series === "christmasClassic"
-                  ? "/images/rowdycup-logo-christmas.svg"
-                  : "/images/rowdycup-logo.svg"
-              }
+              fallbackSrc="/images/puttpirates-logo.svg"
               style={{ height: 40, width: 40, objectFit: "contain" }}
             />
           </ViewTransitionLink>
@@ -270,29 +238,6 @@ export function LayoutShell({ children }: LayoutShellProps) {
                   {!authLoading && player && <div className="h-px bg-border/80" />}
 
                   <div className="space-y-1 p-2">
-                    {showDraftPool && (
-                      <Button asChild variant="ghost" className="w-full justify-start gap-2 text-foreground hover:bg-muted">
-                        <ViewTransitionLink to="/draft" onClick={closeMenu}>
-                          <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                          Draft Pool
-                        </ViewTransitionLink>
-                      </Button>
-                    )}
-
-                    {sideEvents.map((e) => (
-                      <Button
-                        key={e.id}
-                        asChild
-                        variant="ghost"
-                        className="w-full justify-start gap-2 text-foreground hover:bg-muted"
-                      >
-                        <ViewTransitionLink to={`/side-event/${e.id}`} onClick={closeMenu}>
-                          <Flag className="h-4 w-4 text-muted-foreground" />
-                          {e.name}
-                        </ViewTransitionLink>
-                      </Button>
-                    ))}
-
                     <Button asChild variant="ghost" className="w-full justify-start gap-2 text-foreground hover:bg-muted">
                       <ViewTransitionLink to="/leaderboard" onClick={closeMenu}>
                         <Trophy className="h-4 w-4 text-muted-foreground" />
@@ -305,23 +250,6 @@ export function LayoutShell({ children }: LayoutShellProps) {
                         <History className="h-4 w-4 text-muted-foreground" />
                         History
                       </ViewTransitionLink>
-                    </Button>
-
-                    {/* Rules Official: admin flag picks the backend. Grok (in-app,
-                        paid) is flipped on for live rounds; otherwise the free
-                        NotebookLM notebook so pre-round Q&A doesn't burn API usage. */}
-                    <Button asChild variant="ghost" className="w-full justify-start gap-2 text-foreground hover:bg-muted">
-                      {rulesUseGrok ? (
-                        <ViewTransitionLink to="/rules-official" onClick={closeMenu}>
-                          <BookOpen className="h-4 w-4 text-muted-foreground" />
-                          Rules Official
-                        </ViewTransitionLink>
-                      ) : (
-                        <a href={RULES_NOTEBOOKLM_URL} target="_blank" rel="noopener noreferrer" onClick={closeMenu}>
-                          <BookOpen className="h-4 w-4 text-muted-foreground" />
-                          Rules Official
-                        </a>
-                      )}
                     </Button>
 
                     {showInstall && (

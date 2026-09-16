@@ -60,7 +60,6 @@ export default function SideEventScorecardTable({
   holes,
   totalLabel,
   rows,
-  tSeries,
   courseTees,
 }: SideEventScorecardTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -82,8 +81,8 @@ export default function SideEventScorecardTable({
     };
   }, [holes.length, rows.length]);
 
-  const headerBg = tSeries === "christmasClassic" ? "#b8860b" : "#1e293b";
-  const totalBg = tSeries === "christmasClassic" ? "#8b6914" : "#475569";
+  const headerBg = "#1e293b";
+  const totalBg = "#475569";
 
   // Paint the yardage row in the tee color the course names ("Bronze Ross" →
   // bronze); null keeps the plain muted row.
@@ -138,7 +137,7 @@ export default function SideEventScorecardTable({
                   width: SCORECARD_TOTAL_COL_WIDTH,
                   minWidth: SCORECARD_TOTAL_COL_WIDTH,
                   backgroundColor: totalBg,
-                  borderColor: tSeries === "christmasClassic" ? "#8b6914" : "#475569",
+                  borderColor: "#475569",
                 }}
               >
                 {totalLabel}

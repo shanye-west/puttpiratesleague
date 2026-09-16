@@ -18,16 +18,8 @@ import RequireAuth from "./components/RequireAuth";
 // Lazy load routes for code splitting - reduces initial bundle size
 const Match = lazyWithRecovery(() => import("./routes/Match"));
 const Round = lazyWithRecovery(() => import("./routes/Round"));
-const Pairings = lazyWithRecovery(() => import("./routes/Pairings"));
-const PairingPlan = lazyWithRecovery(() => import("./routes/PairingPlan"));
-const PairingsTV = lazyWithRecovery(() => import("./routes/PairingsTV"));
-const SideEvent = lazyWithRecovery(() => import("./routes/SideEvent"));
-const SideEventScorecard = lazyWithRecovery(() => import("./routes/SideEventScorecard"));
-const CaptainsMatchRound = lazyWithRecovery(() => import("./routes/CaptainsMatchRound"));
-const Skins = lazyWithRecovery(() => import("./routes/Skins"));
 const RoundRecap = lazyWithRecovery(() => import("./routes/RoundRecap"));
 const Teams = lazyWithRecovery(() => import("./routes/Teams"));
-const DraftPool = lazyWithRecovery(() => import("./routes/DraftPool"));
 const Leaderboard = lazyWithRecovery(() => import("./routes/Leaderboard"));
 const Sportsbook = lazyWithRecovery(() => import("./routes/Sportsbook"));
 const Chat = lazyWithRecovery(() => import("./routes/Chat"));
@@ -35,7 +27,6 @@ const Player = lazyWithRecovery(() => import("./routes/Player"));
 const Login = lazyWithRecovery(() => import("./routes/Login"));
 const History = lazyWithRecovery(() => import("./routes/History"));
 const NotificationSettings = lazyWithRecovery(() => import("./routes/NotificationSettings"));
-const RulesOfficial = lazyWithRecovery(() => import("./routes/RulesOfficial"));
 const Tournament = lazyWithRecovery(() => import("./routes/Tournament"));
 const AdminLayout = lazyWithRecovery(() => import("./routes/admin/AdminLayout"));
 const AdminDashboard = lazyWithRecovery(() => import("./routes/admin/AdminDashboard"));
@@ -43,9 +34,6 @@ const AdminTournamentLayout = lazyWithRecovery(() => import("./routes/admin/Admi
 const TournamentHome = lazyWithRecovery(() => import("./routes/admin/TournamentHome"));
 const TournamentSettings = lazyWithRecovery(() => import("./routes/admin/TournamentSettings"));
 const RoundAdmin = lazyWithRecovery(() => import("./routes/admin/RoundAdmin"));
-const SideEventAdmin = lazyWithRecovery(() => import("./routes/admin/SideEventAdmin"));
-const CaptainsMatchAdmin = lazyWithRecovery(() => import("./routes/admin/CaptainsMatchAdmin"));
-const CaptainsMatchRoundAdmin = lazyWithRecovery(() => import("./routes/admin/CaptainsMatchRoundAdmin"));
 const MatchCreate = lazyWithRecovery(() => import("./routes/admin/MatchCreate"));
 const MatchAdmin = lazyWithRecovery(() => import("./routes/admin/MatchAdmin"));
 const PlayersAdmin = lazyWithRecovery(() => import("./routes/admin/PlayersAdmin"));
@@ -56,12 +44,9 @@ const RecalculateTournamentStats = lazyWithRecovery(() => import("./routes/Recal
 // No loading fallback - CSS View Transitions handle page navigation smoothly
 const router = createBrowserRouter(
   [
-    // Full-bleed, view-only pairings "broadcast" board for screen-sharing on a
-    // call. Intentionally sits OUTSIDE the LayoutShell (no header / bottom nav)
-    // and is not linked anywhere in the UI — you type the URL directly.
-    // `/pairings-tv` auto-detects the round; `/pairings-tv/2` pins round 2.
-    { path: "/pairings-tv", element: <PairingsTV /> },
-    { path: "/pairings-tv/:roundNum", element: <PairingsTV /> },
+    // Putt Pirates hides the Rowdy Cup-only surfaces (pairings draft/TV/plan,
+    // skins, side events, captains' match, draft pool, rules official). Their
+    // source files remain under routes/ for reference but are not routed.
     {
       path: "/",
       element: <LayoutShell />,
@@ -73,30 +58,14 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <App /> },
         { path: "round/:roundId", element: <Round /> },
-        { path: "round/:roundId/pairings", element: <Pairings /> },
-        // Captains' private planning board — usable before a draft exists, so
-        // it's deliberately NOT gated on one (the page checks captaincy itself).
-        { path: "round/:roundId/plan", element: <RequireAuth><PairingPlan /></RequireAuth> },
-        { path: "round/:roundId/skins", element: <Skins /> },
         { path: "round/:roundId/recap", element: <RoundRecap /> },
         { path: "match/:matchId", element: <Match /> },
-        // Side events — the optional, for-fun 9-hole games (3-man scramble).
-        // Deliberately NOT under /round: they award no Cup points and are
-        // reached only from the hamburger menu, never the tournament home page.
-        { path: "side-event/:sideEventId", element: <SideEvent /> },
-        { path: "side-event/:sideEventId/team/:teamId", element: <SideEventScorecard /> },
-        // Captains' match — the pre-draft running singles match. Its round
-        // cards hang off the tournament home page; not under /round, since it
-        // awards no Cup points.
-        { path: "captains-match/:tournamentId/round/:roundNumber", element: <CaptainsMatchRound /> },
         { path: "teams", element: <Teams /> },
-        { path: "draft", element: <DraftPool /> },
         { path: "leaderboard", element: <Leaderboard /> },
         { path: "sportsbook", element: <RequireAuth><Sportsbook /></RequireAuth> },
         { path: "chat", element: <RequireAuth><Chat /></RequireAuth> },
         { path: "player/:playerId", element: <Player /> },
         { path: "history", element: <History /> },
-        { path: "rules-official", element: <RulesOfficial /> },
         { path: "settings/notifications", element: <NotificationSettings /> },
         { path: "tournament/:tournamentId", element: <Tournament /> },
         { path: "login", element: <Login /> },
@@ -115,9 +84,6 @@ const router = createBrowserRouter(
                 { path: "settings", element: <TournamentSettings /> },
                 { path: "round/:roundId", element: <RoundAdmin /> },
                 { path: "round/:roundId/match/new", element: <MatchCreate /> },
-                { path: "side-event/:sideEventId", element: <SideEventAdmin /> },
-                { path: "captains-match", element: <CaptainsMatchAdmin /> },
-                { path: "captains-match/round/:roundNumber", element: <CaptainsMatchRoundAdmin /> },
                 { path: "match/:matchId", element: <MatchAdmin /> },
               ],
             },

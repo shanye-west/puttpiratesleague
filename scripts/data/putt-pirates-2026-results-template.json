@@ -1,0 +1,291 @@
+{
+  "_readme": "Result-only backfill for matches played off-app. Key = match id; winner = 'teamA' (first-named player), 'teamB' (second), or 'AS' (halved), or null to skip. margin = holes up; thru = holes played when it closed (e.g. 3&2 \u2192 margin 3, thru 16; a 1-up win that went 18 \u2192 margin 1, thru 18). Run: npx ts-node seed-putt-pirates-2026.ts --commit --results data/putt-pirates-2026-results.json",
+  "2026PuttPirates-R03M01": {
+    "_note": "March: Marrero (teamA) vs McGinnis (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R03M02": {
+    "_note": "March: Buhl (teamA) vs Giaimo (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R03M03": {
+    "_note": "March: Petersen (teamA) vs Berg (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R03M04": {
+    "_note": "March: Muir (teamA) vs Chase (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R03M05": {
+    "_note": "March: McGuinness (teamA) vs Blouin (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R03M06": {
+    "_note": "March: Orozco (teamA) vs Hertz (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R03M07": {
+    "_note": "March: Padula (teamA) vs Salazar (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R03M08": {
+    "_note": "March: Roberts (teamA) vs Costello (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R04M01": {
+    "_note": "April: Marrero (teamA) vs Giaimo (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R04M02": {
+    "_note": "April: Buhl (teamA) vs Berg (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R04M03": {
+    "_note": "April: Petersen (teamA) vs Chase (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R04M04": {
+    "_note": "April: Muir (teamA) vs McGinnis (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R04M05": {
+    "_note": "April: McGuinness (teamA) vs Hertz (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R04M06": {
+    "_note": "April: Orozco (teamA) vs Salazar (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R04M07": {
+    "_note": "April: Padula (teamA) vs Costello (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R04M08": {
+    "_note": "April: Roberts (teamA) vs Blouin (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R05M01": {
+    "_note": "May: Marrero (teamA) vs Chase (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R05M02": {
+    "_note": "May: Buhl (teamA) vs McGinnis (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R05M03": {
+    "_note": "May: Petersen (teamA) vs Giaimo (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R05M04": {
+    "_note": "May: Muir (teamA) vs Berg (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R05M05": {
+    "_note": "May: McGuinness (teamA) vs Costello (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R05M06": {
+    "_note": "May: Orozco (teamA) vs Blouin (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R05M07": {
+    "_note": "May: Padula (teamA) vs Hertz (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R05M08": {
+    "_note": "May: Roberts (teamA) vs Salazar (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R06M01": {
+    "_note": "June: Marrero (teamA) vs McGuinness (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R06M02": {
+    "_note": "June: Buhl (teamA) vs Orozco (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R06M03": {
+    "_note": "June: Petersen (teamA) vs Padula (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R06M04": {
+    "_note": "June: Muir (teamA) vs Roberts (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R06M05": {
+    "_note": "June: Berg (teamA) vs Salazar (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R06M06": {
+    "_note": "June: Chase (teamA) vs Costello (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R06M07": {
+    "_note": "June: McGinnis (teamA) vs Blouin (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R06M08": {
+    "_note": "June: Giaimo (teamA) vs Hertz (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R07M01": {
+    "_note": "July: Marrero (teamA) vs Orozco (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R07M02": {
+    "_note": "July: Buhl (teamA) vs Padula (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R07M03": {
+    "_note": "July: Petersen (teamA) vs Roberts (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R07M04": {
+    "_note": "July: Muir (teamA) vs McGuinness (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R07M05": {
+    "_note": "July: Berg (teamA) vs Costello (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R07M06": {
+    "_note": "July: Chase (teamA) vs Blouin (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R07M07": {
+    "_note": "July: McGinnis (teamA) vs Hertz (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R07M08": {
+    "_note": "July: Giaimo (teamA) vs Salazar (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R08M01": {
+    "_note": "August: Marrero (teamA) vs Berg (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R08M02": {
+    "_note": "August: Buhl (teamA) vs Chase (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R08M03": {
+    "_note": "August: Petersen (teamA) vs McGinnis (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R08M04": {
+    "_note": "August: Muir (teamA) vs Giaimo (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R08M05": {
+    "_note": "August: McGuinness (teamA) vs Salazar (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R08M06": {
+    "_note": "August: Orozco (teamA) vs Costello (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R08M07": {
+    "_note": "August: Padula (teamA) vs Blouin (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  },
+  "2026PuttPirates-R08M08": {
+    "_note": "August: Roberts (teamA) vs Hertz (teamB)",
+    "winner": null,
+    "margin": null,
+    "thru": null
+  }
+}

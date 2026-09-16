@@ -1,318 +1,121 @@
-import { useEffect, useState, useMemo, memo } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { query, where, getDocs, collectionGroup } from "firebase/firestore";
-import { db } from "../firebase";
+import { memo, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import LoadingScreen from "../components/LoadingScreen";
 import LastUpdated from "../components/LastUpdated";
-import OfflineImage from "../components/OfflineImage";
 import PlayerAvatar from "../components/PlayerAvatar";
-import type { TierMap } from "../types";
+import { ViewTransitionLink } from "../components/ViewTransitionLink";
+import { Card, CardContent } from "../components/ui/card";
+import { useTournamentContext } from "../contexts/TournamentContext";
 import { useTournamentData } from "../hooks/useTournamentData";
-import { usePlayers, useTournamentContext } from "../contexts/TournamentContext";
+import { useLeagueSeason } from "../hooks/useLeagueSeason";
 import { useAuth } from "../contexts/AuthContext";
-import { rosterPlayerIds } from "../utils/roster";
-import { toFirstNameLastInitial } from "../utils/playerHelpers";
+import { fmtPts } from "../utils/leagueStandings";
+import { leagueTeamColor } from "../utils/leagueTeams";
+import {
+  getPlayerName as getPlayerNameFromLookup,
+  getPlayerFirstNameLastInitial as getPlayerPublicNameFromLookup,
+} from "../utils/playerHelpers";
 
-// We define a local type for the aggregated tournament stats
-type TournamentStat = {
-  wins: number;
-  losses: number;
-  halves: number;
-};
-
+/**
+ * League teams: the four 4-man teams with captain, each member's record and
+ * the team's season line. Reads the same season data as Home (shared cache).
+ */
 function TeamsComponent() {
   const [searchParams] = useSearchParams();
-  const teamParam = searchParams.get("team");
   const tournamentIdParam = searchParams.get("tournamentId");
-  
-  // Reuse the active-tournament subscription from TournamentContext whenever this
-  // page is showing the active tournament (no explicit id, or the id matches it),
-  // so we don't open a second real-time listener on the same tournament doc.
-  // This page only reads tournament + rounds (never matches/stats), so prefer
-  // denormalized round totals to skip the all-matches subscription as well.
-  const { tournament: activeTournament, loading: contextLoading } = useTournamentContext();
   const { user } = useAuth();
+
+  const { tournament: activeTournament, loading: contextLoading } = useTournamentContext();
   const useContextTournament = !tournamentIdParam || tournamentIdParam === activeTournament?.id;
-
-  const tournamentOptions = useMemo(() =>
-    useContextTournament
-      ? { prefetchedTournament: activeTournament, preferDenormalizedTotals: true }
-      : { tournamentId: tournamentIdParam!, preferDenormalizedTotals: true },
-    [useContextTournament, activeTournament, tournamentIdParam]
+  // A past season by id: one tournament read; otherwise reuse the context's doc.
+  const { tournament: fetched, loading: fetchLoading } = useTournamentData(
+    useContextTournament ? { prefetchedTournament: activeTournament } : { tournamentId: tournamentIdParam! }
   );
-  const { tournament, rounds, loading: hookLoading, error: tournamentError } = useTournamentData(tournamentOptions);
+  const tournament = useContextTournament ? activeTournament : fetched;
 
-  // The hook reports a prefetched tournament as "loaded" immediately, so while the
-  // context is still resolving the active tournament we must keep showing loading.
-  const tournamentLoading = useContextTournament ? contextLoading || hookLoading : hookLoading;
+  const { loading: seasonLoading, players, leagueTeams, standings } = useLeagueSeason(tournament);
+  const loading = (useContextTournament ? contextLoading : fetchLoading) || seasonLoading;
 
-  // Roster player docs from the shared cache (warmed once per session) instead of
-  // a per-view fetch.
-  const rosterIds = useMemo(() => rosterPlayerIds(tournament), [tournament]);
-  const { players, loaded: playersLoaded } = usePlayers(rosterIds);
-
-  // Create a stable trigger for refetching stats when rounds lock
-  // This will change when any round.locked value changes
-  const roundsLockState = useMemo(() =>
-    rounds.map(r => `${r.id}:${r.locked ? '1' : '0'}`).join(','),
-    [rounds]
+  const nameOf = useMemo(
+    () => (pid: string) => (user ? getPlayerNameFromLookup(pid, players) : getPlayerPublicNameFromLookup(pid, players)),
+    [user, players]
   );
-
-  // Stable key for the roster ids: the shared player cache re-creates the
-  // `players` object as each batch resolves, and depending on its identity
-  // refired the stats collectionGroup query several times per visit.
-  const playerIdsKey = useMemo(() => Object.keys(players).sort().join(','), [players]);
-
-  const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<Record<string, TournamentStat>>({});
-  const [selectedTeam, setSelectedTeam] = useState<"A" | "B">(teamParam === "B" ? "B" : "A");
-
-  // Track loading states
-  const [factsLoaded, setFactsLoaded] = useState(false);
-
-  // Sync error from tournament hook
-  useEffect(() => {
-    if (tournamentError) setError(tournamentError);
-  }, [tournamentError]);
-
-  // Fetch pre-aggregated byTournament stats using collection group query (one-time read)
-  useEffect(() => {
-    if (!tournament?.id) {
-      setStats({});
-      setFactsLoaded(!tournamentLoading);
-      return;
-    }
-
-    // Wait for players to load before fetching stats
-    if (!playersLoaded) {
-      return;
-    }
-
-    const playerIds = playerIdsKey ? playerIdsKey.split(',') : [];
-    if (playerIds.length === 0) {
-      setFactsLoaded(true);
-      return;
-    }
-
-    // Use getDocs instead of onSnapshot to fetch stats once per tournament update
-    getDocs(
-      query(
-        collectionGroup(db, "byTournament"),
-        where("tournamentId", "==", tournament.id)
-      )
-    )
-      .then(snap => {
-        const newStats: Record<string, TournamentStat> = {};
-        snap.docs.forEach(doc => {
-          const data = doc.data();
-          const playerId = data.playerId;
-          if (playerId && playerIds.includes(playerId)) {
-            newStats[playerId] = {
-              wins: data.wins || 0,
-              losses: data.losses || 0,
-              halves: data.halves || 0,
-            };
-          }
-        });
-        // Fill in zeros for players without stats
-        playerIds.forEach(pid => {
-          if (!newStats[pid]) {
-            newStats[pid] = { wins: 0, losses: 0, halves: 0 };
-          }
-        });
-        setStats(newStats);
-        setFactsLoaded(true);
-      })
-      .catch(err => {
-        console.error("Stats collection group query error:", err);
-        setFactsLoaded(true);
-      });
-  }, [tournament?.id, playerIdsKey, playersLoaded, tournamentLoading, roundsLockState]); // Refetch when any round locks/unlocks
-
-  // Coordinated loading state (derived during render — no effect needed)
-  const allLoaded = !tournamentLoading && (!tournament || (playersLoaded && factsLoaded));
-  const loading = !allLoaded;
-
-  const renderRoster = (teamColor: string, roster?: TierMap, handicaps?: Record<string, number>, captainId?: string, _coCaptainId?: string) => {
-    if (!roster) return (
-      <div className="card p-4 opacity-60">
-        <div className="text-center text-muted-foreground">No roster defined.</div>
-      </div>
-    );
-
-    // Sort tiers alphabetically (A, B, C...)
-    const tiers = Object.keys(roster).sort();
-
-    return (
-      <div className="card" style={{ padding: 0, overflow: "hidden", borderTop: `4px solid ${teamColor}` }}>
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          {tiers.map((tier) => {
-            const pIds = roster[tier as keyof TierMap] || [];
-            if (pIds.length === 0) return null;
-
-            // Sort player IDs by handicap (lowest to highest). Players without a handicap
-            // are placed after those with defined handicaps.
-            const sortedPIds = [...pIds].sort((a, b) => {
-              const ha = handicaps?.[a];
-              const hb = handicaps?.[b];
-              if (ha == null && hb == null) return 0;
-              if (ha == null) return 1;
-              if (hb == null) return -1;
-              return Number(ha) - Number(hb);
-            });
-
-            return (
-              <div key={tier}>
-                {/* Tier header (single letter) - keep font size, reduce vertical padding */}
-                <div className="section-header py-0 text-xs">
-                  {tier}
-                </div>
-
-                {/* Player Rows */}
-                {sortedPIds.map(pid => {
-                  const p = players[pid];
-                  const s = stats[pid];
-                  const fullName = p?.displayName || "Unknown";
-                  const name = user ? fullName : toFirstNameLastInitial(fullName);
-                  const hcp = handicaps?.[pid];
-                  const isCaptain = pid === captainId;
-                  
-                  return (
-                    <div 
-                      key={pid} 
-                      className="flex justify-between items-center px-4 py-2 border-b border-border hover:bg-muted transition-colors duration-150"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <PlayerAvatar name={name} playerId={pid} color={teamColor} size={36} />
-                        <div className="flex min-w-0 items-baseline gap-2">
-                        <Link
-                          to={`/player/${pid}`}
-                          className="font-semibold text-foreground hover:text-foreground"
-                        >
-                          {name}
-                        </Link>
-                        {hcp != null && (
-                          <span className="text-xs text-muted-foreground">({Number(hcp).toFixed(1)})</span>
-                        )}
-                        {isCaptain && (
-                          <span 
-                            style={{ 
-                              fontSize: '0.65rem', 
-                              fontWeight: 700,
-                              color: teamColor,
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.05em',
-                              padding: '1px 5px',
-                              borderRadius: 4,
-                              background: `color-mix(in srgb, ${teamColor} 15%, var(--card-bg))`,
-                              marginLeft: 6,
-                            }}
-                          >
-                            Captain
-                          </span>
-                        )}
-                        </div>
-                      </div>
-                      <div className="text-sm text-muted-foreground font-mono">
-                        {s ? `${s.wins}-${s.losses}-${s.halves}` : "0-0-0"}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
+  const rowOf = (pid: string) => standings.individual.find((r) => r.playerId === pid);
 
   if (loading) return <LoadingScreen />;
-  if (error) return (
-    <div className="p-5 text-center text-red-600">
-      <div className="text-2xl mb-2">⚠️</div>
-      <div>{error}</div>
-    </div>
-  );
-
-  const teamAName = tournament?.teamA?.name || "Team A";
-  const teamBName = tournament?.teamB?.name || "Team B";
-  const teamAColor = tournament?.teamA?.color || "var(--team-a-default)";
-  const teamBColor = tournament?.teamB?.color || "var(--team-b-default)";
-  const teamALogo = tournament?.teamA?.logo;
-  const teamBLogo = tournament?.teamB?.logo;
 
   return (
-    <Layout title="Team Rosters" series={tournament?.series} showBack tournamentLogo={tournament?.tournamentLogo}>
-      <div style={{ padding: 16, display: "grid", gap: 16, maxWidth: 800, margin: "0 auto" }}>
-        
-        {/* Team Selector Tabs */}
-        <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border shadow-sm">
-          {/* Team A Tab */}
-          <button
-            type="button"
-            onClick={() => setSelectedTeam("A")}
-            aria-pressed={selectedTeam === "A"}
-            className="flex items-center justify-center gap-2.5 px-3 py-3.5 transition-all"
-            style={{
-              background:
-                selectedTeam === "A"
-                  ? `color-mix(in srgb, ${teamAColor} 15%, var(--card-bg))`
-                  : "var(--card-bg)",
-              borderBottom: `3px solid ${selectedTeam === "A" ? teamAColor : "transparent"}`,
-            }}
-          >
-            <OfflineImage
-              src={teamALogo}
-              alt={teamAName}
-              fallbackIcon="🔵"
-              style={{ width: 56, height: 56, objectFit: "contain" }}
-            />
-          </button>
-
-          {/* Team B Tab */}
-          <button
-            type="button"
-            onClick={() => setSelectedTeam("B")}
-            aria-pressed={selectedTeam === "B"}
-            className="flex items-center justify-center gap-2.5 border-l border-border px-3 py-3.5 transition-all"
-            style={{
-              background:
-                selectedTeam === "B"
-                  ? `color-mix(in srgb, ${teamBColor} 15%, var(--card-bg))`
-                  : "var(--card-bg)",
-              borderBottom: `3px solid ${selectedTeam === "B" ? teamBColor : "transparent"}`,
-            }}
-          >
-            <OfflineImage
-              src={teamBLogo}
-              alt={teamBName}
-              fallbackIcon="🔴"
-              style={{ width: 56, height: 56, objectFit: "contain" }}
-            />
-          </button>
-        </div>
-
-        {/* Selected Team Roster */}
-        {selectedTeam === "A" ? (
-          renderRoster(
-            teamAColor, 
-            tournament?.teamA?.rosterByTier,
-            tournament?.teamA?.handicapByPlayer,
-            tournament?.teamA?.captainId,
-            tournament?.teamA?.coCaptainId
-          )
-        ) : (
-          renderRoster(
-            teamBColor, 
-            tournament?.teamB?.rosterByTier,
-            tournament?.teamB?.handicapByPlayer,
-            tournament?.teamB?.captainId,
-            tournament?.teamB?.coCaptainId
-          )
+    <Layout title="Teams" series={tournament?.series} showBack tournamentLogo={tournament?.tournamentLogo}>
+      <div className="space-y-4 px-4 py-6">
+        {leagueTeams.length === 0 && (
+          <Card className="border-border/80 bg-card/85">
+            <CardContent className="py-8 text-center text-sm text-muted-foreground">No league teams yet.</CardContent>
+          </Card>
         )}
-
+        {standings.teams.map((teamRow) => {
+          const team = leagueTeams.find((t) => t.id === teamRow.teamId);
+          if (!team) return null;
+          const color = leagueTeamColor(team, leagueTeams);
+          return (
+            <Card key={team.id} className="overflow-hidden border-border/80 bg-card/85">
+              <div className="h-1.5" style={{ background: color }} />
+              <CardContent className="space-y-3 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      #{teamRow.rank}
+                    </div>
+                    <div className="truncate text-lg font-semibold text-foreground">{team.name}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold tabular-nums" style={{ color }}>{fmtPts(teamRow.points)}</div>
+                    <div className="text-[0.6rem] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {teamRow.w}-{teamRow.l}-{teamRow.t} · +{teamRow.extra} bonus
+                    </div>
+                  </div>
+                </div>
+                <div className="divide-y divide-border/60 rounded-xl border border-border/60">
+                  {team.playerIds.map((pid) => {
+                    const r = rowOf(pid);
+                    const isCaptain = pid === team.captainId;
+                    return (
+                      <ViewTransitionLink
+                        key={pid}
+                        to={`/player/${pid}`}
+                        className="flex items-center gap-3 px-3 py-2 hover:bg-muted/60"
+                      >
+                        <PlayerAvatar name={nameOf(pid)} playerId={pid} color={color} size={30} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-semibold text-foreground">{nameOf(pid)}</span>
+                            {isCaptain && (
+                              <span
+                                className="rounded px-1.5 py-0.5 text-[0.55rem] font-bold uppercase tracking-wider"
+                                style={{ color, background: `color-mix(in srgb, ${color} 15%, var(--card-bg))` }}
+                              >
+                                Captain
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[0.65rem] text-muted-foreground">
+                            {r ? `#${r.rank} · ${r.mp} played` : "—"}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-bold tabular-nums">{r ? fmtPts(r.points) : "0"}</div>
+                          <div className="font-mono text-[0.65rem] text-muted-foreground">
+                            {r ? `${r.w}-${r.l}-${r.t}` : "0-0-0"}
+                          </div>
+                        </div>
+                      </ViewTransitionLink>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
         <LastUpdated />
       </div>
     </Layout>

@@ -74,16 +74,20 @@ export async function handleMatchNotify(event: MatchWriteEvent): Promise<void> {
   const meta = await loadTournamentMeta(tournamentId);
   if (meta.playerIds.length === 0) return;
 
+  // League (Putt Pirates): a match is one player vs another, so label the sides
+  // by the players' names rather than the (empty) Cup team names.
+  const { teamAName, teamBName } = meta.leagueMode ? await sideNames(after, meta) : meta;
+
   const link = `/match/${event.params.matchId}`;
   if (justClosed) {
     await notify(meta.playerIds, {
       category: "matchResult",
       title: "Final",
-      body: resultBody(afterStatus, after.result?.winner, meta.teamAName, meta.teamBName),
+      body: resultBody(afterStatus, after.result?.winner, teamAName, teamBName),
       link,
     });
   } else {
-    const name = teamLabel(afterStatus.leader as "teamA" | "teamB", meta.teamAName, meta.teamBName);
+    const name = teamLabel(afterStatus.leader as "teamA" | "teamB", teamAName, teamBName);
     await notify(meta.playerIds, {
       category: "matchLeadChange",
       title: "Lead change",
@@ -93,4 +97,27 @@ export async function handleMatchNotify(event: MatchWriteEvent): Promise<void> {
   }
 
   await stateRef.set({ sig, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+/** Side labels for a singles league match: each side's player display name. */
+async function sideNames(
+  match: FirebaseFirestore.DocumentData,
+  meta: { teamAName: string; teamBName: string }
+): Promise<{ teamAName: string; teamBName: string }> {
+  const first = (side: unknown): string | null => {
+    const p = Array.isArray(side) ? (side[0] as { playerId?: unknown } | undefined) : undefined;
+    return typeof p?.playerId === "string" && p.playerId ? p.playerId : null;
+  };
+  const aId = first(match.teamAPlayers);
+  const bId = first(match.teamBPlayers);
+  if (!aId || !bId) return meta;
+  const [aSnap, bSnap] = await db().getAll(
+    db().collection("players").doc(aId),
+    db().collection("players").doc(bId)
+  );
+  const name = (snap: DocumentSnapshot, fallback: string) => {
+    const n = snap.data()?.displayName;
+    return typeof n === "string" && n.trim() ? n.trim() : fallback;
+  };
+  return { teamAName: name(aSnap, meta.teamAName || "Player A"), teamBName: name(bSnap, meta.teamBName || "Player B") };
 }

@@ -1,4 +1,4 @@
-cd /rowdy-pwa/scripts
+cd scripts
 npx ts-node seed-tournament.ts --input data/tournament.json
 
 npx ts-node seed-tournament.ts --input data/tournament.json --force (if needed)

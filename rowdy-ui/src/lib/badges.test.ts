@@ -4,7 +4,7 @@ import type { PlayerStatsBySeries } from "../types";
 
 const base: PlayerStatsBySeries = {
   playerId: "p1",
-  series: "rowdyCup",
+  series: "puttPirates",
   wins: 0,
   losses: 0,
   halves: 0,

@@ -13,8 +13,7 @@ import { toFirstNameLastInitial } from "../utils/playerHelpers";
 import type { PlayerStatsBySeries, TournamentDoc } from "../types";
 
 const SERIES_LABELS: Record<string, string> = {
-  rowdyCup: "Rowdy Cup",
-  christmasClassic: "Christmas Classic",
+  puttPirates: "Putt Pirates",
 };
 
 const FORMAT_ORDER = ["singles", "twoManBestBall", "twoManShamble", "twoManScramble", "fourManScramble"] as const;

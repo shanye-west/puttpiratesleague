@@ -32,9 +32,9 @@ export default function Leaderboard() {
   // Logged-out (public) viewers see "First L." instead of full last names.
   const showName = (n: string) => (user ? n : toFirstNameLastInitial(n));
 
-  // Always the all-time Rowdy Cup series, spanning every player who has ever
-  // played it (not limited to the current tournament roster).
-  const { leaderboard: seriesStats, names, loading } = useAllTimeLeaderboard("rowdyCup", true);
+  // Always the all-time Putt Pirates series, spanning every player who has ever
+  // played it (not limited to the current season roster).
+  const { leaderboard: seriesStats, names, loading } = useAllTimeLeaderboard("puttPirates", true);
 
   const rows = useMemo<Row[]>(() => {
     const mapped: Row[] = seriesStats.map((s) => {
@@ -76,7 +76,7 @@ export default function Leaderboard() {
       <div className="space-y-3 p-4">
         {/* Sort toggle */}
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Lifetime Rowdy Cup records</span>
+          <span className="text-xs font-medium text-muted-foreground">Lifetime Putt Pirates records</span>
           <div className="flex gap-1 rounded-full bg-muted p-0.5">
             {(
               [

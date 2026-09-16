@@ -85,7 +85,7 @@ function SideEventComponent() {
     );
   }
 
-  const tName = tournament?.name || "Rowdy Cup";
+  const tName = tournament?.name || "Putt Pirates";
   const podium = leaderboard.filter((t) => t.thru > 0).slice(0, 3);
   const myPlayerId = player?.id;
 

@@ -2,24 +2,24 @@ import { getTeamColor, ensureTournamentTeamColors } from './teamColors';
 import { describe, it, expect } from 'vitest';
 
 describe('teamColors util', () => {
-  it('returns rowdyCup defaults when override missing', () => {
-    expect(getTeamColor('rowdyCup', 'teamA', '')).toBe('#132448');
-    expect(getTeamColor('rowdyCup', 'teamB', null)).toBe('#bf203c');
+  it('returns puttPirates defaults when override missing', () => {
+    expect(getTeamColor('puttPirates', 'teamA', '')).toBe('#0b3d3a');
+    expect(getTeamColor('puttPirates', 'teamB', null)).toBe('#c9a227');
   });
 
-  it('returns christmasClassic defaults when series set', () => {
-    expect(getTeamColor('christmasClassic', 'teamA', '')).toBe('#00863c');
-    expect(getTeamColor('christmasClassic', 'teamB', undefined)).toBe('#ef211c');
+  it('falls back to the default series for an unknown series', () => {
+    expect(getTeamColor('somethingElse', 'teamA', '')).toBe('#0b3d3a');
+    expect(getTeamColor(undefined, 'teamB', undefined)).toBe('#c9a227');
   });
 
   it('prefers override when provided', () => {
-    expect(getTeamColor('rowdyCup', 'teamA', '#abcdef')).toBe('#abcdef');
+    expect(getTeamColor('puttPirates', 'teamA', '#abcdef')).toBe('#abcdef');
   });
 
   it('ensureTournamentTeamColors populates missing colors', () => {
-    const t = { series: 'christmasClassic', teamA: { id: 'teamA', name: 'A', color: '' }, teamB: { id: 'teamB', name: 'B' } } as any;
+    const t = { series: 'puttPirates', teamA: { id: 'teamA', name: 'A', color: '' }, teamB: { id: 'teamB', name: 'B' } } as any;
     const out = ensureTournamentTeamColors(t) as any;
-    expect(out.teamA.color).toBe('#00863c');
-    expect(out.teamB.color).toBe('#ef211c');
+    expect(out.teamA.color).toBe('#0b3d3a');
+    expect(out.teamB.color).toBe('#c9a227');
   });
 });

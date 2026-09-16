@@ -1,8 +1,6 @@
 {
   "projects": {
-    "default": "rowdy-pwa",
-    "dev": "dev-rowdy-pwa",
-    "prod": "rowdy-pwa"
+    "default": "puttpiratesgolf"
   },
   "targets": {},
   "etags": {}

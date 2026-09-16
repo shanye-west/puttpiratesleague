@@ -68,7 +68,7 @@ function CaptainsMatchRoundComponent() {
     </Layout>
   );
 
-  const tName = tournament?.name || "Rowdy Cup";
+  const tName = tournament?.name || "Putt Pirates";
   const homeLink = tournamentContext?.tournament?.id === tournamentId ? "/" : `/tournament/${tournamentId}`;
 
   if (error || !match || !summary || !round) {

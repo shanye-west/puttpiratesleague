@@ -77,6 +77,14 @@ export async function handleTournamentNotify(event: RoundWriteEvent): Promise<vo
   const tournamentId = after.tournamentId;
   if (!tournamentId || typeof tournamentId !== "string") return;
 
+  const meta = await loadTournamentMeta(tournamentId);
+  if (meta.playerIds.length === 0) return;
+  // League season (Putt Pirates): no two-sided Cup standings to sum.
+  if (meta.leagueMode) {
+    await handleLeagueRoundNotify(event, meta.playerIds, after);
+    return;
+  }
+
   // Sum every round's totals for the tournament (mirror useTournamentData).
   const roundsSnap = await db().collection("rounds").where("tournamentId", "==", tournamentId).get();
   let confirmedA = 0, confirmedB = 0, pendingA = 0, pendingB = 0, computedTotal = 0;
@@ -90,8 +98,6 @@ export async function handleTournamentNotify(event: RoundWriteEvent): Promise<vo
     computedTotal += (d.data().pointsValue ?? 1) * (pt.matchCount ?? 0);
   }
 
-  const meta = await loadTournamentMeta(tournamentId);
-  if (meta.playerIds.length === 0) return;
   const { teamAName, teamBName } = meta;
   const totalPointsAvailable = meta.totalPointsAvailable ?? computedTotal;
 
@@ -114,7 +120,7 @@ export async function handleTournamentNotify(event: RoundWriteEvent): Promise<vo
     payloads.push({
       category: "tournament",
       title: "🏆 Champions",
-      body: `${teamLabel(champion, teamAName, teamBName)} win the Rowdy Cup!`,
+      body: `${teamLabel(champion, teamAName, teamBName)} win it all!`,
       link: "/",
     });
     nextState.championNotified = true;
@@ -154,4 +160,36 @@ export async function handleTournamentNotify(event: RoundWriteEvent): Promise<vo
     await notify(meta.playerIds, payload);
   }
   await stateRef.set({ ...nextState, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+/**
+ * League season (Putt Pirates): the two-sided Cup copy (champion / overall
+ * lead change) doesn't apply — the standings are 16 individuals and 4 teams.
+ * The one milestone worth a push is a month going final.
+ */
+async function handleLeagueRoundNotify(
+  event: RoundWriteEvent,
+  playerIds: string[],
+  round: FirebaseFirestore.DocumentData
+): Promise<void> {
+  const roundId = event.params.roundId;
+  const tournamentId = round.tournamentId as string;
+  const stateRef = db().collection("tournamentNotifyState").doc(tournamentId);
+  const state = (await stateRef.get()).data() || {};
+  const roundsFinal: Record<string, boolean> = state.roundsFinal ?? {};
+  if (roundsFinal[roundId]) return;
+  if (!(await isRoundComplete(roundId))) return;
+
+  const label = typeof round.name === "string" && round.name.trim() ? round.name.trim() : `Round ${round.day ?? ""}`.trim();
+  const count = round.pointTotals?.matchCount ?? 0;
+  await notify(playerIds, {
+    category: "tournament",
+    title: `${label} is in the books`,
+    body: count > 0 ? `All ${count} matches are final — check the standings` : "All matches are final — check the standings",
+    link: "/",
+  });
+  await stateRef.set(
+    { roundsFinal: { ...roundsFinal, [roundId]: true }, updatedAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
 }

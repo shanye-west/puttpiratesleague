@@ -1,4 +1,4 @@
-import type { TierMap, TournamentDoc } from "../types";
+import type { LeagueTeam, TierMap, TournamentDoc } from "../types";
 
 const TIERS = ["A", "B", "C", "D"] as const;
 
@@ -7,14 +7,25 @@ export function tierPlayerIds(roster: TierMap | undefined): string[] {
   return TIERS.flatMap((tier) => roster?.[tier] ?? []);
 }
 
-/** All player ids rostered on either team of a tournament. */
+/** Player ids across a tournament's league teams (Putt Pirates), in team order. */
+export function leagueTeamPlayerIds(leagueTeams: LeagueTeam[] | undefined): string[] {
+  return (leagueTeams ?? []).flatMap((t) => t.playerIds ?? []);
+}
+
+/**
+ * All player ids rostered in a tournament: both Cup sides' tiers plus every
+ * league team's members, deduped (a player appears once even if listed twice).
+ */
 export function rosterPlayerIds(
-  tournament: Pick<TournamentDoc, "teamA" | "teamB"> | null | undefined
+  tournament: Pick<TournamentDoc, "teamA" | "teamB"> & { leagueTeams?: LeagueTeam[] } | null | undefined
 ): string[] {
   if (!tournament) return [];
   return [
-    ...tierPlayerIds(tournament.teamA?.rosterByTier),
-    ...tierPlayerIds(tournament.teamB?.rosterByTier),
+    ...new Set([
+      ...tierPlayerIds(tournament.teamA?.rosterByTier),
+      ...tierPlayerIds(tournament.teamB?.rosterByTier),
+      ...leagueTeamPlayerIds(tournament.leagueTeams),
+    ]),
   ];
 }
 

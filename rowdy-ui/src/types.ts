@@ -205,6 +205,19 @@ export type TournamentDoc = {
   // the tournament page only open a listener on captainsMatches/{id} when it's
   // true, so every other tournament costs no extra read.
   hasCaptainsMatch?: boolean;
+  // LEAGUE (Putt Pirates): the season's 4-man teams. Orthogonal to a match's
+  // two SIDES (teamA/teamB) — two members of one league team can be drawn
+  // against each other. Present ⇒ the app renders the league home/standings.
+  leagueTeams?: LeagueTeam[];
+};
+
+/** A season-long 4-man league team (Putt Pirates). */
+export type LeagueTeam = {
+  id: string;
+  name: string;
+  captainId: string;
+  playerIds: string[];
+  color?: string;
 };
 
 // NEW: Hole definition (static data)
@@ -220,6 +233,10 @@ export type RoundDoc = {
   id: string;
   tournamentId: string;
   day?: number;
+  name?: string; // Display label, e.g. the month ("March"); falls back to "Round {day}"
+  // LEAGUE: admin override for which league team takes this month's bonus point
+  // (used when the captains' card-off can't be resolved from the app's data).
+  bonusTeamId?: string | null;
   format?: RoundFormat | null; // null until format is selected
   locked?: boolean;
   courseId?: string; // Reference to courses collection
@@ -407,6 +424,26 @@ export type MatchDoc = {
   teamAPlayers?: { playerId: string; strokesReceived: number[] }[];
   teamBPlayers?: { playerId: string; strokesReceived: number[] }[];
   courseHandicaps?: number[]; // Course handicaps for all players in match order [teamA..., teamB...]
+  // Auth uids allowed to write `holes` (server-derived from the players' authUid).
+  authorizedUids?: string[];
+  // Denormalized player ids from both sides (server-maintained; array-contains queries).
+  playerIds?: string[];
+  // LEAGUE: the course this match is played on (players pick per match). Overrides
+  // the round's courseId. Absent until "Set up match" has been run.
+  courseId?: string;
+  strokesSetAt?: FirestoreTimestampLike;
+  strokesSetBy?: string;
+  // LEAGUE: an admin-entered bare result for a match played off-app (no card).
+  // When set and no hole is scored, the server closes the match from it.
+  manualResult?: ManualResult;
+};
+
+export type ManualResult = {
+  winner: "teamA" | "teamB" | "AS";
+  margin?: number;
+  thru?: number;
+  setBy?: string;
+  setAt?: FirestoreTimestampLike;
 };
 
 // ============================================================================
@@ -619,10 +656,10 @@ export type PlayerStatDoc = {
 
 // =============================================================================
 // PLAYER STATS BY SERIES
-// Aggregated stats per player per tournament series (rowdyCup, christmasClassic)
+// Aggregated stats per player per tournament series (puttPirates)
 // =============================================================================
 
-export type TournamentSeries = "rowdyCup" | "christmasClassic";
+export type TournamentSeries = "puttPirates";
 
 export type PlayerStatsBySeries = {
   playerId: string;

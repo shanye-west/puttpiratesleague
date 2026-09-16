@@ -32,12 +32,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      includeAssets: [
-        "images/rowdy-reindeer.svg",
-        "images/rowdycup-logo-christmas.svg",
-        "images/rowdycup-logo.svg",
-        "images/stocking-stuffers.svg",
-      ],
+      includeAssets: ["images/puttpirates-logo.svg"],
       // autoUpdate: the generated SW uses skipWaiting + clientsClaim, so a new
       // version installs, activates, and reloads the page automatically. This
       // closes the window where a stale old SW kept serving old chunks after a
@@ -55,10 +50,8 @@ export default defineConfig({
         // caching and background push (a second FCM SW would conflict at "/").
         importScripts: ['firebase-messaging-sw.js'],
         // ...but don't precache that handler — it pulls the FCM compat SDK from
-        // gstatic at runtime and isn't an app asset to cache-bust. Also skip the
-        // install-guide videos (~2MB each): they're only needed pre-install, when
-        // the user is online in the browser, so precaching them just bloats the SW.
-        globIgnores: ['**/firebase-messaging-sw.js', '**/videos/**'],
+        // gstatic at runtime and isn't an app asset to cache-bust.
+        globIgnores: ['**/firebase-messaging-sw.js'],
         // Set explicitly (rather than relying on the plugin default, which
         // varies by version) so bundled player headshots (.webp) are precached
         // and render offline alongside the app shell.
@@ -107,13 +100,13 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Rowdy Cup',
-        short_name: 'Rowdy Cup',
-        description: 'Live scoring for the Rowdy Cup tournament',
+        name: 'Putt Pirates Golf',
+        short_name: 'Putt Pirates',
+        description: 'Live match-play scoring and standings for the Putt Pirates golf league',
         id: '/',
         lang: 'en',
         categories: ['sports'],
-        theme_color: '#132448', // brand navy — matches the header gradient
+        theme_color: '#0b3d3a', // brand teal — matches the header gradient
         background_color: '#f6f6f6', // matches --app-bg
         display: 'standalone', // Hides browser UI
         orientation: 'portrait', // mobile-only scoring app; scorecard scrolls horizontally in portrait

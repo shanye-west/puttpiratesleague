@@ -24,7 +24,7 @@ import { httpsCallable } from "firebase/functions";
 import { app, functions } from "./firebase";
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
-const LOCAL_TOKEN_KEY = "rowdy:push-token";
+const LOCAL_TOKEN_KEY = "puttpirates:push-token";
 
 const registerPushToken = httpsCallable<{ token: string; userAgent?: string }, { success: boolean }>(
   functions,

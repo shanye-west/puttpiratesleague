@@ -23,6 +23,9 @@ type MatchStatusHeaderProps = {
    */
   offlineNotReady?: boolean;
   onOpenOfflinePrep?: () => void;
+  /** League singles: label/colour the sides by player instead of the Cup teams. */
+  sideNames?: { teamA: string; teamB: string };
+  sideColors?: { teamA: string; teamB: string };
 };
 
 export function MatchStatusHeader({
@@ -36,9 +39,11 @@ export function MatchStatusHeader({
   showStrokesInfo = true,
   offlineNotReady,
   onOpenOfflinePrep,
+  sideNames,
+  sideColors,
 }: MatchStatusHeaderProps) {
-  const teamAColor = tournament?.teamA?.color || "var(--team-a-default)";
-  const teamBColor = tournament?.teamB?.color || "var(--team-b-default)";
+  const teamAColor = sideColors?.teamA || tournament?.teamA?.color || "var(--team-a-default)";
+  const teamBColor = sideColors?.teamB || tournament?.teamB?.color || "var(--team-b-default)";
 
   return (
     <div className="space-y-3">
@@ -133,8 +138,8 @@ export function MatchStatusHeader({
               result={match.result}
               teamAColor={teamAColor}
               teamBColor={teamBColor}
-              teamAName={tournament?.teamA?.name}
-              teamBName={tournament?.teamB?.name}
+              teamAName={sideNames?.teamA ?? tournament?.teamA?.name}
+              teamBName={sideNames?.teamB ?? tournament?.teamB?.name}
               teeTime={match?.teeTime}
             />
           </div>

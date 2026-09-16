@@ -1,5 +1,5 @@
 /**
- * Shared constants for Rowdy Cup Cloud Functions
+ * Shared constants for Putt Pirates Golf Cloud Functions
  */
 
 // =============================================================================

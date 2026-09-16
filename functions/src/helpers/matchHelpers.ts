@@ -41,6 +41,39 @@ export function emptyHolesFor(format: RoundFormat): Record<string, { input: Hole
 }
 
 /**
+ * Whether a hole's input carries any entered score for the format. Mirrors the
+ * "completed holes" test computeMatchOnWrite and updateMatchFacts have always
+ * used (any non-null gross on either side counts — validity is decideHole's job).
+ */
+export function holeHasScore(format: RoundFormat, input: any): boolean {
+  if (!input || typeof input !== "object") return false;
+  if (format === "singles") {
+    return input.teamAPlayerGross != null || input.teamBPlayerGross != null;
+  }
+  if (format === "twoManScramble" || format === "fourManScramble") {
+    return input.teamAGross != null || input.teamBGross != null;
+  }
+  if (format === "twoManBestBall" || format === "twoManShamble") {
+    const aArr = input.teamAPlayersGross;
+    const bArr = input.teamBPlayersGross;
+    return (Array.isArray(aArr) && (aArr[0] != null || aArr[1] != null)) ||
+           (Array.isArray(bArr) && (bArr[0] != null || bArr[1] != null));
+  }
+  return false;
+}
+
+/** Number of holes (1-18) with any entered score. */
+export function countScoredHoles(format: RoundFormat, holes: Record<string, any> | undefined): number {
+  if (!holes || typeof holes !== "object") return 0;
+  let n = 0;
+  for (const key of Object.keys(holes)) {
+    const holeNum = parseInt(key, 10);
+    if (holeNum >= 1 && holeNum <= 18 && holeHasScore(format, holes[key]?.input)) n++;
+  }
+  return n;
+}
+
+/**
  * Returns a default status object for a new match
  */
 export function defaultStatus() {

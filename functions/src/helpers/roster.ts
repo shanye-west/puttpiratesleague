@@ -7,6 +7,7 @@
  */
 
 import { getFirestore } from "firebase-admin/firestore";
+import type { LeagueTeam } from "../types.js";
 
 function db() {
   return getFirestore();
@@ -23,10 +24,34 @@ export function matchPlayerIds(m: FirebaseFirestore.DocumentData): string[] {
   return [...fromTeam(m.teamAPlayers), ...fromTeam(m.teamBPlayers)];
 }
 
-/** Pure: every rostered player id (both teams) from a tournament doc, deduped. */
+/** Pure: the league teams on a tournament doc, shape-checked. */
+export function leagueTeamsOf(t: FirebaseFirestore.DocumentData | undefined): LeagueTeam[] {
+  const raw = t?.leagueTeams;
+  if (!Array.isArray(raw)) return [];
+  const out: LeagueTeam[] = [];
+  for (const team of raw) {
+    if (!team || typeof team !== "object") continue;
+    const { id, name, captainId, playerIds, color } = team as Record<string, unknown>;
+    if (typeof id !== "string" || !id) continue;
+    out.push({
+      id,
+      name: typeof name === "string" ? name : id,
+      captainId: typeof captainId === "string" ? captainId : "",
+      playerIds: Array.isArray(playerIds) ? playerIds.filter((x): x is string => typeof x === "string" && !!x) : [],
+      ...(typeof color === "string" && color ? { color } : {}),
+    });
+  }
+  return out;
+}
+
+/**
+ * Pure: every rostered player id from a tournament doc, deduped — both Cup
+ * sides' tiers/handicap maps plus every league team's members (Putt Pirates).
+ */
 export function rosterPlayerIds(t: FirebaseFirestore.DocumentData | undefined): string[] {
   if (!t) return [];
   const ids: string[] = [];
+  for (const team of leagueTeamsOf(t)) ids.push(...team.playerIds);
   for (const team of [t.teamA, t.teamB]) {
     const tiers = (team as { rosterByTier?: Record<string, unknown> } | undefined)?.rosterByTier;
     if (tiers) {
@@ -56,6 +81,9 @@ export interface TournamentMeta {
   tiebreakerWinner?: "teamA" | "teamB";
   /** Admin override for total points available; falls back to a computed sum when unset. */
   totalPointsAvailable?: number;
+  /** True for a league season (has league teams): no Cup-style champion/lead-change copy. */
+  leagueMode: boolean;
+  leagueTeams: LeagueTeam[];
 }
 
 function teamName(team: unknown, fallback: string): string {
@@ -71,9 +99,12 @@ function teamName(team: unknown, fallback: string): string {
 export async function loadTournamentMeta(tournamentId: string): Promise<TournamentMeta> {
   const t = (await db().collection("tournaments").doc(tournamentId).get()).data();
   const tb = t?.tiebreakerWinner;
+  const leagueTeams = leagueTeamsOf(t);
   return {
     exists: !!t,
     playerIds: rosterPlayerIds(t),
+    leagueMode: leagueTeams.length > 0,
+    leagueTeams,
     teamAName: teamName(t?.teamA, "Team A"),
     teamBName: teamName(t?.teamB, "Team B"),
     tiebreakerWinner: tb === "teamA" || tb === "teamB" ? tb : undefined,

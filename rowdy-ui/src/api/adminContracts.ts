@@ -36,6 +36,15 @@ export interface TeamUpdates {
   handicapByPlayer?: Record<string, number>;
 }
 
+/** A season-long 4-man league team (Putt Pirates). Mirrors LeagueTeam in types.ts. */
+export interface LeagueTeamInput {
+  id: string;
+  name: string;
+  captainId: string;
+  playerIds: string[];
+  color?: string;
+}
+
 export interface TournamentUpdates {
   name?: string;
   year?: number;
@@ -59,6 +68,8 @@ export interface TournamentUpdates {
   // Extra players (beyond captains, co-captains and admins) allowed a personal
   // pairing-planning board. null/[] clears the list.
   planAccessPlayerIds?: string[] | null;
+  // League teams (Putt Pirates): the 4-man season teams. null clears them.
+  leagueTeams?: LeagueTeamInput[] | null;
   teamA?: TeamUpdates;
   teamB?: TeamUpdates;
 }
@@ -82,6 +93,7 @@ export interface CreateTournamentRequest {
   test?: boolean;
   teamA?: TeamUpdates;
   teamB?: TeamUpdates;
+  leagueTeams?: LeagueTeamInput[];
 }
 
 export interface CreateTournamentResult extends AdminResult {
@@ -94,6 +106,10 @@ export interface CreateTournamentResult extends AdminResult {
 
 export interface RoundUpdates {
   day?: number;
+  /** Display label, e.g. the month ("March"). */
+  name?: string;
+  /** League: admin override for which league team takes the month's bonus point. null clears. */
+  bonusTeamId?: string | null;
   format?: RoundFormat | null;
   courseId?: string | null;
   pointsValue?: number;
@@ -293,6 +309,36 @@ export interface EditMatchRequest {
 }
 
 export interface RecalculateMatchStrokesRequest {
+  matchId: string;
+}
+
+// ---- League match setup (players or admins) ----
+
+export interface SetupMatchCardRequest {
+  matchId: string;
+  courseId: string;
+  /** playerId -> integer course handicap for the day (every player in the match). */
+  courseHandicaps: Record<string, number>;
+}
+
+export interface SetupMatchCardResult extends AdminResult {
+  matchId: string;
+  /** Positional, match order [teamA..., teamB...]. */
+  courseHandicaps: number[];
+  /** playerId -> 18-element 0/1 strokes array actually written. */
+  strokesReceived: Record<string, number[]>;
+}
+
+// ---- Manual (result-only) matches, admin ----
+
+export interface AdminSetMatchResultRequest {
+  matchId: string;
+  winner: "teamA" | "teamB" | "AS";
+  margin?: number;
+  thru?: number;
+}
+
+export interface AdminClearMatchResultRequest {
   matchId: string;
 }
 

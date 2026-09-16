@@ -1,4 +1,4 @@
-cd /rowdy-pwa/scripts
+cd scripts
 npx ts-node seed-match.ts --input data/match-singles.json
 
 {

@@ -8,7 +8,9 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase";
 import type {
   AdminResult,
+  AdminClearMatchResultRequest,
   AdminOverrideHoleScoreRequest,
+  AdminSetMatchResultRequest,
   ComputeRoundRecapRequest,
   ComputeRoundRecapResult,
   CreatePlayerRequest,
@@ -92,6 +94,9 @@ export const adminApi = {
   adminOverrideHoleScore: call<AdminOverrideHoleScoreRequest, AdminResult>("adminOverrideHoleScore"),
   deleteMatch: call<DeleteMatchRequest, AdminResult>("deleteMatch"),
   recalculateMatchStrokes: call<RecalculateMatchStrokesRequest, RecalculateMatchStrokesResult>("recalculateMatchStrokes"),
+  // League: result-only matches (played off-app, no card)
+  setMatchResult: call<AdminSetMatchResultRequest, AdminResult>("adminSetMatchResult"),
+  clearMatchResult: call<AdminClearMatchResultRequest, AdminResult>("adminClearMatchResult"),
 
   // Player
   createPlayer: call<CreatePlayerRequest, AdminResult>("createPlayer"),

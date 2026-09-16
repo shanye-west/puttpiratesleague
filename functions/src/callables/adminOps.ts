@@ -45,6 +45,59 @@ function requireString(value: unknown, field: string): string {
 // ============================================================================
 
 /**
+ * Validates the league teams array (Putt Pirates): unique ids, a captain who
+ * is on their own team, and no player on two teams. Returns a clean copy.
+ */
+function sanitizeLeagueTeams(value: unknown, label: string): Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    throw new HttpsError("invalid-argument", `${label} must be an array of teams`);
+  }
+  const seenIds = new Set<string>();
+  const seenPlayers = new Map<string, string>();
+  const out: Record<string, unknown>[] = [];
+  value.forEach((raw, idx) => {
+    if (typeof raw !== "object" || raw === null) {
+      throw new HttpsError("invalid-argument", `${label}[${idx}] must be an object`);
+    }
+    const team = raw as Record<string, unknown>;
+    const id = requireString(team.id, `${label}[${idx}].id`);
+    const name = requireString(team.name, `${label}[${idx}].name`);
+    const captainId = requireString(team.captainId, `${label}[${idx}].captainId`);
+    const playerIds = team.playerIds;
+    if (!Array.isArray(playerIds) || playerIds.length === 0 || playerIds.some((p) => typeof p !== "string" || !p.trim())) {
+      throw new HttpsError("invalid-argument", `${label}[${idx}].playerIds must be a non-empty array of player ids`);
+    }
+    if (playerIds.length > 8) {
+      throw new HttpsError("invalid-argument", `${label}[${idx}].playerIds has too many players (max 8)`);
+    }
+    const ids = [...new Set((playerIds as string[]).map((p) => p.trim()))];
+    if (!ids.includes(captainId)) {
+      throw new HttpsError("invalid-argument", `${label}[${idx}]: captain "${captainId}" must be on the team`);
+    }
+    if (seenIds.has(id)) {
+      throw new HttpsError("invalid-argument", `${label}: duplicate team id "${id}"`);
+    }
+    seenIds.add(id);
+    for (const pid of ids) {
+      const other = seenPlayers.get(pid);
+      if (other) {
+        throw new HttpsError("invalid-argument", `${label}: player "${pid}" is on both "${other}" and "${id}"`);
+      }
+      seenPlayers.set(pid, id);
+    }
+    const clean: Record<string, unknown> = { id, name, captainId, playerIds: ids };
+    if (team.color !== undefined && team.color !== null && team.color !== "") {
+      if (typeof team.color !== "string") {
+        throw new HttpsError("invalid-argument", `${label}[${idx}].color must be a string`);
+      }
+      clean.color = team.color.trim();
+    }
+    out.push(clean);
+  });
+  return out;
+}
+
+/**
  * Validates and extracts the editable fields of a team object.
  * Only whitelisted keys are accepted; unknown keys are rejected so a typo
  * can't silently write garbage into the tournament doc.
@@ -202,6 +255,11 @@ export const updateTournament = onCall(async (request) => {
         }
         toMerge[key] = sanitizeTeamUpdates(value as Record<string, unknown>, `updates.${key}`);
         break;
+      case "leagueTeams":
+        // League (Putt Pirates): the 4-man season teams. null clears them, which
+        // also turns the league home/standings off for this tournament.
+        toMerge.leagueTeams = value === null ? FieldValue.delete() : sanitizeLeagueTeams(value, "updates.leagueTeams");
+        break;
       default:
         throw new HttpsError("invalid-argument", `updates.${key} is not an editable field`);
     }
@@ -264,6 +322,9 @@ export const createTournament = onCall(async (request) => {
       doc[key] = sanitizeTeamUpdates(value as Record<string, unknown>, key);
     }
   }
+  if (request.data?.leagueTeams !== undefined) {
+    doc.leagueTeams = sanitizeLeagueTeams(request.data.leagueTeams, "leagueTeams");
+  }
 
   const ref = request.data?.id
     ? db().collection("tournaments").doc(requireString(request.data.id, "id"))
@@ -301,6 +362,17 @@ function sanitizeRoundUpdates(updates: Record<string, unknown>): Record<string, 
         break;
       case "courseId":
         out.courseId = value === null ? null : requireString(value, "courseId");
+        break;
+      case "name":
+        // Display label (the month, for a league round). Empty clears it.
+        if (typeof value !== "string" || value.length > 40) {
+          throw new HttpsError("invalid-argument", "name must be a string of at most 40 characters");
+        }
+        out.name = value.trim() === "" ? FieldValue.delete() : value.trim();
+        break;
+      case "bonusTeamId":
+        // League: admin override for the month's bonus point. null clears it.
+        out.bonusTeamId = value === null || value === "" ? FieldValue.delete() : requireString(value, "bonusTeamId");
         break;
       case "day":
         if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
@@ -768,7 +840,22 @@ export const linkAuthToPlayer = onCall(async (request) => {
   // the server-only private subcollection (used for admin display / relinking).
   await ref.set({ authUid: authUser.uid, _adminUpdatedAt: FieldValue.serverTimestamp() }, { merge: true });
   await ref.collection("private").doc("profile").set({ email }, { merge: true });
-  return { success: true, playerId, authUid: authUser.uid };
+
+  // A match's authorizedUids is derived at seed time, so a player linked AFTER
+  // their matches were created couldn't score them. Fan the uid out to every
+  // open match they're in (playerIds is denormalized by the match callables /
+  // seedMatchBoilerplate). Closed matches are left alone.
+  const openMatches = await db().collection("matches").where("playerIds", "array-contains", playerId).get();
+  const batch = db().batch();
+  let touched = 0;
+  for (const m of openMatches.docs) {
+    if (m.data().status?.closed === true) continue;
+    batch.update(m.ref, { authorizedUids: FieldValue.arrayUnion(authUser.uid) });
+    touched++;
+  }
+  if (touched > 0) await batch.commit();
+
+  return { success: true, playerId, authUid: authUser.uid, matchesAuthorized: touched };
 });
 
 /**

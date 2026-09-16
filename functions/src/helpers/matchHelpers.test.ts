@@ -10,6 +10,8 @@ import {
   zeros18,
   ensureSideSize,
   normalizeHoles,
+  holeHasScore,
+  countScoredHoles,
 } from "./matchHelpers.js";
 import type { RoundFormat } from "../types.js";
 
@@ -438,5 +440,37 @@ describe("normalizeHoles", () => {
       expect(result["1"].input.teamAPlayerGross).toBe(4);
       expect(result["18"].input.teamAPlayerGross).toBeNull();
     });
+  });
+});
+
+// --- holeHasScore / countScoredHoles ---
+
+describe("holeHasScore", () => {
+  it("singles: any non-null gross on either side counts", () => {
+    expect(holeHasScore("singles", { teamAPlayerGross: null, teamBPlayerGross: null })).toBe(false);
+    expect(holeHasScore("singles", { teamAPlayerGross: 4, teamBPlayerGross: null })).toBe(true);
+    expect(holeHasScore("singles", { teamAPlayerGross: null, teamBPlayerGross: 5 })).toBe(true);
+    expect(holeHasScore("singles", undefined)).toBe(false);
+  });
+
+  it("scramble uses team gross, best ball / shamble use the player arrays", () => {
+    expect(holeHasScore("twoManScramble", { teamAGross: 4, teamBGross: null })).toBe(true);
+    expect(holeHasScore("twoManScramble", { teamAGross: null, teamBGross: null })).toBe(false);
+    expect(holeHasScore("twoManBestBall", { teamAPlayersGross: [null, null], teamBPlayersGross: [null, 4] })).toBe(true);
+    expect(holeHasScore("twoManShamble", { teamAPlayersGross: [null, null], teamBPlayersGross: [null, null] })).toBe(false);
+  });
+});
+
+describe("countScoredHoles", () => {
+  it("counts only holes 1-18 with a score", () => {
+    const holes = {
+      "1": { input: { teamAPlayerGross: 4, teamBPlayerGross: 4 } },
+      "2": { input: { teamAPlayerGross: null, teamBPlayerGross: null } },
+      "3": { input: { teamAPlayerGross: null, teamBPlayerGross: 3 } },
+      "19": { input: { teamAPlayerGross: 4, teamBPlayerGross: 4 } },
+    };
+    expect(countScoredHoles("singles", holes)).toBe(2);
+    expect(countScoredHoles("singles", undefined)).toBe(0);
+    expect(countScoredHoles("singles", {})).toBe(0);
   });
 });

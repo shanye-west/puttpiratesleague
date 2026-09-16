@@ -127,10 +127,10 @@ export interface PlayerInMatch {
 
 // =============================================================================
 // PLAYER STATS BY SERIES
-// Aggregated stats per player per tournament series (rowdyCup, christmasClassic)
+// Aggregated stats per player per tournament series (puttPirates)
 // =============================================================================
 
-export type TournamentSeries = "rowdyCup" | "christmasClassic";
+export type TournamentSeries = "puttPirates";
 
 export interface PlayerStatsBySeries {
   playerId: string;
@@ -198,6 +198,26 @@ export interface MatchData {
   holes?: Record<string, HoleData>;
   status?: MatchStatus;
   result?: MatchResult;
+  /** League: the course this match was played on (overrides the round's). */
+  courseId?: string;
+  /** Denormalized player ids from both sides (array-contains queries). */
+  playerIds?: string[];
+  /** League: an admin-entered bare result for a match played off-app. */
+  manualResult?: { winner: "teamA" | "teamB" | "AS"; margin?: number; thru?: number };
+}
+
+// ============================================================================
+// LEAGUE TEAMS (Putt Pirates)
+// Season-long 4-man teams. Orthogonal to a match's two SIDES (teamA/teamB):
+// two members of one league team can be drawn against each other.
+// ============================================================================
+
+export interface LeagueTeam {
+  id: string;
+  name: string;
+  captainId: string;
+  playerIds: string[];
+  color?: string;
 }
 
 // ============================================================================

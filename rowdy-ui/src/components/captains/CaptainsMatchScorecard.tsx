@@ -59,7 +59,7 @@ export default function CaptainsMatchScorecard({
   colorA,
   colorB,
   clinch,
-  tSeries = "rowdyCup",
+  tSeries = "puttPirates",
 }: CaptainsMatchScorecardProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);

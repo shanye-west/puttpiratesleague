@@ -4,7 +4,7 @@ import { Button } from "../ui/button";
 import { Field, FieldGroup, InfoNote, ToggleList, ToggleRow } from "./fields";
 import { inputClass } from "./inputStyles";
 import { cn } from "../../lib/utils";
-import type { PlayerDoc, TierMap, TournamentDoc } from "../../types";
+import type { LeagueTeam, PlayerDoc, TierMap, TournamentDoc } from "../../types";
 import type { TournamentUpdates } from "../../api/adminContracts";
 
 const TIERS = ["A", "B", "C", "D"] as const;
@@ -14,6 +14,33 @@ type TeamKey = "teamA" | "teamB";
 
 /** Which panel of the settings form is visible. Owned by the page's tab bar. */
 export type SettingsTab = "setup" | "rosters";
+
+const LEAGUE_TEAM_COUNT = 4;
+const LEAGUE_TEAM_SIZE = 4;
+
+interface LeagueTeamFormState {
+  id: string;
+  name: string;
+  color: string;
+  captainId: string;
+  playerIds: string[];
+}
+
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 32);
+}
+
+function leagueTeamsToForm(teams: LeagueTeam[] | undefined): LeagueTeamFormState[] {
+  const out = (teams ?? []).map((t) => ({
+    id: t.id,
+    name: t.name ?? "",
+    color: t.color ?? "",
+    captainId: t.captainId ?? "",
+    playerIds: [...(t.playerIds ?? [])],
+  }));
+  while (out.length < LEAGUE_TEAM_COUNT) out.push({ id: "", name: "", color: "", captainId: "", playerIds: [] });
+  return out;
+}
 
 interface TeamFormState {
   name: string;
@@ -81,21 +108,11 @@ export default function TournamentSettingsForm({
   const [openPublicEdits, setOpenPublicEdits] = useState(!!tournament.openPublicEdits);
   const [sportsbookEnabled, setSportsbookEnabled] = useState(!!tournament.sportsbookEnabled);
   const [commentsEnabled, setCommentsEnabled] = useState(!!tournament.commentsEnabled);
-  const [hideDraftPool, setHideDraftPool] = useState(!!tournament.hideDraftPool);
-  const [rulesOfficialUseGrok, setRulesOfficialUseGrok] = useState(!!tournament.rulesOfficialUseGrok);
   const [test, setTest] = useState(!!tournament.test);
-  const [totalPointsAvailable, setTotalPointsAvailable] = useState(
-    tournament.totalPointsAvailable != null ? String(tournament.totalPointsAvailable) : ""
-  );
-  const hasDraftPool = !!tournament.draftPool && Object.keys(tournament.draftPool).length > 0;
-  const [tiebreakerWinner, setTiebreakerWinner] = useState<"" | "teamA" | "teamB">(
-    tournament.tiebreakerWinner ?? ""
-  );
   const [teamA, setTeamA] = useState<TeamFormState>(teamToForm(tournament.teamA));
   const [teamB, setTeamB] = useState<TeamFormState>(teamToForm(tournament.teamB));
-  // Extra planners: players who get a personal pairing-planning board without
-  // being a captain or admin (those two always have one).
-  const [planAccessIds, setPlanAccessIds] = useState<string[]>(tournament.planAccessPlayerIds ?? []);
+  // League (Putt Pirates): four 4-man teams with a captain each.
+  const [leagueTeams, setLeagueTeams] = useState<LeagueTeamFormState[]>(leagueTeamsToForm(tournament.leagueTeams));
   const [error, setError] = useState<string | null>(null);
 
   const playerNameById = useMemo(() => {
@@ -189,17 +206,28 @@ export default function TournamentSettingsForm({
       throw new Error("Year must be a number.");
     }
 
-    const totalPointsTrimmed = totalPointsAvailable.trim();
-    let totalPoints: number | null;
-    if (totalPointsTrimmed === "") {
-      totalPoints = null;
-    } else {
-      const num = Number(totalPointsTrimmed);
-      if (!Number.isFinite(num) || num <= 0) {
-        throw new Error("Total points available must be a positive number (or blank to auto-total).");
-      }
-      totalPoints = num;
-    }
+    // League teams: blank rows are dropped; a named team needs a captain on it.
+    const seen = new Map<string, string>();
+    const cleanLeagueTeams = leagueTeams
+      .filter((t) => t.name.trim() || t.playerIds.length > 0)
+      .map((t, idx) => {
+        const teamName = t.name.trim();
+        if (!teamName) throw new Error(`League team ${idx + 1} needs a name.`);
+        if (t.playerIds.length === 0) throw new Error(`${teamName} has no players.`);
+        if (!t.captainId || !t.playerIds.includes(t.captainId)) throw new Error(`${teamName} needs a captain from its roster.`);
+        for (const pid of t.playerIds) {
+          const other = seen.get(pid);
+          if (other) throw new Error(`${playerNameById[pid] ?? pid} is on both ${other} and ${teamName}.`);
+          seen.set(pid, teamName);
+        }
+        return {
+          id: t.id || slugify(teamName) || `team-${idx + 1}`,
+          name: teamName,
+          captainId: t.captainId,
+          playerIds: t.playerIds,
+          ...(t.color.trim() ? { color: t.color.trim() } : {}),
+        };
+      });
 
     return {
       name,
@@ -208,12 +236,8 @@ export default function TournamentSettingsForm({
       openPublicEdits,
       sportsbookEnabled,
       commentsEnabled,
-      hideDraftPool,
-      rulesOfficialUseGrok,
       test,
-      tiebreakerWinner: tiebreakerWinner === "" ? null : tiebreakerWinner,
-      totalPointsAvailable: totalPoints,
-      planAccessPlayerIds: planAccessIds.length > 0 ? planAccessIds : null,
+      leagueTeams: cleanLeagueTeams.length > 0 ? cleanLeagueTeams : null,
       teamA: buildTeam(teamA),
       teamB: buildTeam(teamB),
     };
@@ -247,7 +271,7 @@ export default function TournamentSettingsForm({
 
   const renderTeamSection = (key: TeamKey, form: TeamFormState, fallbackLabel: string) => {
     const ids = rosteredIds(form);
-    const swatch = /^#[0-9a-f]{6}$/i.test(form.color) ? form.color : "#132448";
+    const swatch = /^#[0-9a-f]{6}$/i.test(form.color) ? form.color : "#0b3d3a";
     return (
       <FieldGroup
         key={key}
@@ -413,20 +437,6 @@ export default function TournamentSettingsForm({
               />
             </Field>
           </div>
-          <Field
-            label="Total points available"
-            hint="Points contested across the whole tournament (e.g. 24). Drives the score-tracker bar and “points needed to win”. Blank auto-totals from created matches — set it manually when later rounds' matches don't exist yet."
-          >
-            <input
-              type="number"
-              step="0.5"
-              min="0"
-              value={totalPointsAvailable}
-              placeholder="Auto (sum of created matches)"
-              onChange={(e) => setTotalPointsAvailable(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
         </FieldGroup>
 
         <FieldGroup title="Visibility & features">
@@ -461,83 +471,123 @@ export default function TournamentSettingsForm({
               checked={commentsEnabled}
               onChange={setCommentsEnabled}
             />
-            <ToggleRow
-              label="Rules Official: use Grok"
-              description="On = the in-app AI for live rounds. Off = the free NotebookLM link."
-              checked={rulesOfficialUseGrok}
-              onChange={setRulesOfficialUseGrok}
-            />
-            {hasDraftPool && (
-              <ToggleRow
-                label="Hide draft pool"
-                description="Hides the Draft Pool card and menu link. The pool data is kept."
-                checked={hideDraftPool}
-                onChange={setHideDraftPool}
-              />
-            )}
           </ToggleList>
         </FieldGroup>
 
-        <FieldGroup
-          title="Tiebreaker winner"
-          description="Set only when regulation ended tied and a tiebreaker decided the Cup. Shows a champions banner on the home and tournament pages."
-        >
-          <select
-            value={tiebreakerWinner}
-            onChange={(e) => setTiebreakerWinner(e.target.value as "" | "teamA" | "teamB")}
-            className={inputClass}
-          >
-            <option value="">None (decided in regulation / unbroken tie)</option>
-            <option value="teamA">{teamA.name || "Team A"} won the tiebreaker</option>
-            <option value="teamB">{teamB.name || "Team B"} won the tiebreaker</option>
-          </select>
-        </FieldGroup>
-
-        <FieldGroup
-          title="Pairing-plan access"
-          description="Captains, co-captains and admins always get a personal planning board. Tick anyone else who should get one — each person's board is private to them."
-        >
-          {allPlayers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No players loaded.</p>
-          ) : (
-            <div className="max-h-56 overflow-y-auto rounded-lg border border-border/70 p-2">
-              <div className="grid grid-cols-2 gap-1">
-                {[...allPlayers]
-                  .sort((a, b) => (a.displayName ?? a.id).localeCompare(b.displayName ?? b.id))
-                  .map((p) => (
-                    <label key={p.id} className="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted">
-                      <input
-                        type="checkbox"
-                        checked={planAccessIds.includes(p.id)}
-                        onChange={(e) =>
-                          setPlanAccessIds((prev) =>
-                            e.target.checked ? [...prev, p.id] : prev.filter((id) => id !== p.id)
-                          )
-                        }
-                        className="h-4 w-4 accent-[var(--brand-primary)]"
-                      />
-                      <span className="truncate">{p.displayName ?? p.id}</span>
-                    </label>
-                  ))}
-              </div>
-            </div>
-          )}
-          {planAccessIds.length > 0 && (
-            <InfoNote>
-              {planAccessIds.length} extra planner{planAccessIds.length === 1 ? "" : "s"}:{" "}
-              {planAccessIds.map((id) => playerNameById[id] ?? id).join(", ")}
-            </InfoNote>
-          )}
-        </FieldGroup>
       </div>
 
       <div className={cn("space-y-4", tab !== "rosters" && "hidden")}>
         <InfoNote>
-          Players are picked from the global player list — add someone new under Players first.
-          A player can only sit in one tier, on one team.
+          League teams: four teams of four, one captain each. Players are picked from the global
+          player list — add someone new under Players first. A player can only be on one team.
         </InfoNote>
-        {renderTeamSection("teamA", teamA, "Team A")}
-        {renderTeamSection("teamB", teamB, "Team B")}
+        {leagueTeams.map((team, idx) => {
+          const takenElsewhere = new Set(leagueTeams.flatMap((t, i) => (i === idx ? [] : t.playerIds)));
+          const available = allPlayers.filter((p) => !takenElsewhere.has(p.id) && !team.playerIds.includes(p.id));
+          const swatch = /^#[0-9a-f]{6}$/i.test(team.color) ? team.color : "#0b3d3a";
+          const update = (patch: Partial<LeagueTeamFormState>) =>
+            setLeagueTeams((prev) => prev.map((t, i) => (i === idx ? { ...t, ...patch } : t)));
+          return (
+            <FieldGroup
+              key={idx}
+              title={
+                <span className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full border border-border" style={{ background: swatch }} />
+                  {team.name || `League team ${idx + 1}`}
+                  <span className="text-xs font-normal text-muted-foreground">{team.playerIds.length}/{LEAGUE_TEAM_SIZE}</span>
+                </span>
+              }
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Name">
+                  <input
+                    type="text"
+                    value={team.name}
+                    onChange={(e) => update({ name: e.target.value })}
+                    placeholder="Wreck It Ralph"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Color">
+                  <div className="flex gap-2">
+                    <input
+                      type="color"
+                      value={swatch}
+                      onChange={(e) => update({ color: e.target.value })}
+                      className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-border bg-card"
+                      aria-label={`${team.name || `League team ${idx + 1}`} color`}
+                    />
+                    <input
+                      type="text"
+                      value={team.color}
+                      placeholder="#0b3d3a"
+                      onChange={(e) => update({ color: e.target.value })}
+                      className={cn(inputClass, "font-mono text-xs")}
+                    />
+                  </div>
+                </Field>
+                <Field label="Captain">
+                  <select value={team.captainId} onChange={(e) => update({ captainId: e.target.value })} className={inputClass}>
+                    <option value="">None</option>
+                    {team.playerIds.map((pid) => (
+                      <option key={pid} value={pid}>{playerNameById[pid] ?? pid}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Add player">
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      update({ playerIds: [...team.playerIds, e.target.value] });
+                    }}
+                    className={cn(inputClass, "text-xs")}
+                    disabled={team.playerIds.length >= 8}
+                    aria-label={`Add a player to ${team.name || `league team ${idx + 1}`}`}
+                  >
+                    <option value="">+ Add player…</option>
+                    {available.map((p) => (
+                      <option key={p.id} value={p.id}>{p.displayName ?? p.id}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              {team.playerIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {team.playerIds.map((pid) => (
+                    <span key={pid} className="inline-flex items-center gap-1 rounded-full bg-muted py-1 pl-2.5 pr-1 text-xs font-medium">
+                      {playerNameById[pid] ?? pid}
+                      {pid === team.captainId && <span className="text-[0.55rem] uppercase text-muted-foreground">(C)</span>}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          update({
+                            playerIds: team.playerIds.filter((id) => id !== pid),
+                            captainId: team.captainId === pid ? "" : team.captainId,
+                          })
+                        }
+                        aria-label={`Remove ${playerNameById[pid] ?? pid} from ${team.name || `league team ${idx + 1}`}`}
+                        className="rounded-full p-0.5 text-muted-foreground hover:bg-background hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </FieldGroup>
+          );
+        })}
+
+        <details className="rounded-xl border border-border/70 p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-muted-foreground">
+            Cup sides (Team A / Team B) — not used by the league
+          </summary>
+          <div className="mt-3 space-y-4">
+            {renderTeamSection("teamA", teamA, "Team A")}
+            {renderTeamSection("teamB", teamB, "Team B")}
+          </div>
+        </details>
       </div>
 
       <div className="sticky bottom-3 z-10 flex items-center gap-3 rounded-xl border border-border/70 bg-card/95 p-2 shadow-lg backdrop-blur">
