@@ -220,6 +220,13 @@ export interface LeagueTeam {
   color?: string;
 }
 
+/** Standings carried in from before the app; added on top of computed results. */
+export interface PriorStandings {
+  asOf?: string;
+  players: Record<string, { mp: number; w: number; l: number; t: number }>;
+  teams: Record<string, Record<string, { points: number; bonus?: boolean }>>;
+}
+
 // ============================================================================
 // SIDE EVENTS
 // A fun, optional 9-hole game (e.g. the 3-man scramble) that is deliberately

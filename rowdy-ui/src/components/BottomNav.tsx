@@ -1,33 +1,41 @@
 import { useLocation } from "react-router-dom";
-import { Home, Users, MessageCircle, DollarSign } from "lucide-react";
+import { Flag, Trophy, CalendarDays, DollarSign } from "lucide-react";
 import { ViewTransitionLink } from "./ViewTransitionLink";
 import { useNotifications } from "../contexts/NotificationsContext";
 
 type Tab = {
   to: string;
   label: string;
-  Icon: typeof Home;
+  Icon: typeof Flag;
   /** Returns true when this tab should be highlighted for the given pathname. */
   isActive: (pathname: string) => boolean;
   /** Deep-link prefix whose unread notifications badge this tab (optional). */
   badgePrefix?: string;
 };
 
+// League flow: what's left to play → where everyone stands → the calendar → bets.
+// Chat and team rosters live in the hamburger menu.
 const TABS: Tab[] = [
   {
     to: "/",
-    label: "Home",
-    Icon: Home,
-    // The live tournament "stack" — schedule, rounds, matches, and the captains'
-    // match's round cards all hang off Home.
-    isActive: (p) =>
-      p === "/" || p.startsWith("/round") || p.startsWith("/match") || p.startsWith("/captains-match"),
+    label: "Matches",
+    Icon: Flag,
+    isActive: (p) => p === "/" || p.startsWith("/match"),
+    // Badge match results / lead changes (they deep-link to /match/…).
+    badgePrefix: "/match",
   },
   {
-    to: "/teams",
-    label: "Teams",
-    Icon: Users,
-    isActive: (p) => p.startsWith("/teams"),
+    to: "/standings",
+    label: "Standings",
+    Icon: Trophy,
+    isActive: (p) =>
+      p.startsWith("/standings") || p.startsWith("/teams") || p.startsWith("/player") || p.startsWith("/leaderboard"),
+  },
+  {
+    to: "/season",
+    label: "Season",
+    Icon: CalendarDays,
+    isActive: (p) => p.startsWith("/season") || p.startsWith("/round") || p.startsWith("/history") || p.startsWith("/tournament"),
   },
   {
     to: "/sportsbook",
@@ -36,14 +44,6 @@ const TABS: Tab[] = [
     isActive: (p) => p.startsWith("/sportsbook"),
     // Badge bet challenges/accepts (they deep-link to /sportsbook).
     badgePrefix: "/sportsbook",
-  },
-  {
-    to: "/chat",
-    label: "Chat",
-    Icon: MessageCircle,
-    isActive: (p) => p.startsWith("/chat"),
-    // Badge new sportsbook-feed comments/replies (they deep-link to /chat).
-    badgePrefix: "/chat",
   },
 ];
 

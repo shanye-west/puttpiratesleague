@@ -15,7 +15,7 @@ import { Badge } from "../components/ui/badge";
 import { Card, CardContent } from "../components/ui/card";
 import { formatRoundType, getTournamentWinner } from "../utils";
 import { isLeagueTournament } from "../utils/leagueTeams";
-import LeagueHome from "../components/league/LeagueHome";
+import LeagueStandingsView from "../components/league/LeagueStandingsView";
 // RedirectCountdown removed; show Go Home button instead
 
 /**
@@ -73,7 +73,7 @@ function TournamentComponent() {
   if (isLeagueTournament(tournament)) {
     return (
       <Layout title={tName} series={tSeries} showBack tournamentLogo={tLogo}>
-        <LeagueHome tournament={tournament} />
+        <LeagueStandingsView tournament={tournament} withSeasonList />
       </Layout>
     );
   }

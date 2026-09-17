@@ -36,7 +36,7 @@ export const MonthMatchList = memo(function MonthMatchList({
   if (matches.length === 0) {
     return (
       <Card className="border-border/80 bg-card/85">
-        <CardContent className="py-8 text-center text-sm text-muted-foreground">No matches scheduled.</CardContent>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">No matches left to play in the app this month.</CardContent>
       </Card>
     );
   }

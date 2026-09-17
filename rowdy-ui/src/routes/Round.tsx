@@ -147,7 +147,7 @@ function RoundComponent() {
   const isLeague = isLeagueTournament(tournament);
   const leagueTeams = tournament?.leagueTeams ?? [];
   const monthStandings = isLeague
-    ? computeLeagueStandings({ rounds: [round], matchesByRound: { [round.id]: matches }, leagueTeams })
+    ? computeLeagueStandings({ rounds: [round], matchesByRound: { [round.id]: matches }, leagueTeams, prior: tournament?.priorStandings ?? null })
     : null;
   const monthBonusInfo = monthStandings?.bonusByRound[round.id];
   const playedCount = matches.filter((m) => m.status?.closed === true).length;

@@ -170,3 +170,34 @@ describe("captainNet", () => {
     expect(captainNet(partial, "mo")).toBeNull();
   });
 });
+
+describe("prior (carried-in) standings", () => {
+  it("adds carried-in player records and month cells under the app's own results", () => {
+    const rounds = [round("r1", 1), round("r2", 2)];
+    const prior = {
+      asOf: "test",
+      players: { phil: { mp: 6, w: 5, l: 0, t: 1 }, mo: { mp: 5, w: 2, l: 3, t: 0 }, berg: { mp: 5, w: 1, l: 4, t: 0 } },
+      teams: { cq: { r1: { points: 3.5, bonus: true } }, wir: { r1: { points: 2 }, r2: { points: 0.5 } } },
+    };
+    const matchesByRound = { r2: [match("x", "phil", "mo", "teamB", { roundId: "r2" })] }; // mo beats phil in r2
+    const { individual, teams: rowsT, grid, bonusByRound } = computeLeagueStandings({ rounds, matchesByRound, leagueTeams: teams, prior });
+    const row = (pid: string) => individual.find((r) => r.playerId === pid)!;
+    expect(row("phil")).toMatchObject({ mp: 7, w: 5, l: 1, t: 1, points: 5.5, rank: 1 });
+    expect(row("mo")).toMatchObject({ mp: 6, w: 3, l: 3, t: 0, points: 3 });
+    expect(row("berg")).toMatchObject({ mp: 5, w: 1, l: 4, points: 1 });
+    // r1 bonus was already awarded to cq on paper; r2 goes to wir outright (0.5 + 1)
+    expect(bonusByRound.r1).toMatchObject({ teamId: "cq", reason: "override" });
+    expect(bonusByRound.r2).toMatchObject({ teamId: "wir", reason: "outright" });
+    expect(grid.cq.r1).toMatchObject({ points: 3.5, bonus: true });
+    expect(grid.wir.r2).toMatchObject({ points: 1.5, bonus: true });
+    const t = (id: string) => rowsT.find((r) => r.teamId === id)!;
+    expect(t("cq")).toMatchObject({ mp: 7, w: 5, l: 1, t: 1, extra: 1, points: 4.5 });
+    expect(t("wir")).toMatchObject({ mp: 6, w: 3, l: 3, extra: 1, points: 4.5 });
+  });
+
+  it("keeps a month pending when it has carried-in points but open app matches", () => {
+    const prior = { players: {}, teams: { wir: { r1: { points: 0.5 } }, cq: { r1: { points: 2 } } } };
+    const matches = [match("1", "buhl", "pork", null, { closed: false })];
+    expect(monthBonus(round("r1", 1), matches, teams, teamOf, prior)).toMatchObject({ teamId: null, pending: true, reason: "pendingMatches", leaderId: "cq" });
+  });
+});

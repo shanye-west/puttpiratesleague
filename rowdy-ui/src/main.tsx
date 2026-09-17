@@ -20,6 +20,8 @@ const Match = lazyWithRecovery(() => import("./routes/Match"));
 const Round = lazyWithRecovery(() => import("./routes/Round"));
 const RoundRecap = lazyWithRecovery(() => import("./routes/RoundRecap"));
 const Teams = lazyWithRecovery(() => import("./routes/Teams"));
+const Standings = lazyWithRecovery(() => import("./routes/Standings"));
+const Season = lazyWithRecovery(() => import("./routes/Season"));
 const Leaderboard = lazyWithRecovery(() => import("./routes/Leaderboard"));
 const Sportsbook = lazyWithRecovery(() => import("./routes/Sportsbook"));
 const Chat = lazyWithRecovery(() => import("./routes/Chat"));
@@ -60,6 +62,8 @@ const router = createBrowserRouter(
         { path: "round/:roundId", element: <Round /> },
         { path: "round/:roundId/recap", element: <RoundRecap /> },
         { path: "match/:matchId", element: <Match /> },
+        { path: "standings", element: <Standings /> },
+        { path: "season", element: <Season /> },
         { path: "teams", element: <Teams /> },
         { path: "leaderboard", element: <Leaderboard /> },
         { path: "sportsbook", element: <RequireAuth><Sportsbook /></RequireAuth> },

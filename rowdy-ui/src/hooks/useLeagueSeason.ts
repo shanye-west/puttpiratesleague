@@ -44,9 +44,10 @@ export function useLeagueSeason(tournament: TournamentDoc | null | undefined): L
     return out;
   }, [players]);
 
+  const prior = tournament?.priorStandings ?? null;
   const standings = useMemo(
-    () => computeLeagueStandings({ rounds, matchesByRound, leagueTeams, names }),
-    [rounds, matchesByRound, leagueTeams, names]
+    () => computeLeagueStandings({ rounds, matchesByRound, leagueTeams, names, prior }),
+    [rounds, matchesByRound, leagueTeams, names, prior]
   );
 
   const currentRound = useMemo(() => {

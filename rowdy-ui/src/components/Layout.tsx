@@ -7,6 +7,8 @@ import {
   Shield,
   Trophy,
   History,
+  MessageCircle,
+  Users,
   LogOut,
   LogIn,
   Wifi,
@@ -239,16 +241,30 @@ export function LayoutShell({ children }: LayoutShellProps) {
 
                   <div className="space-y-1 p-2">
                     <Button asChild variant="ghost" className="w-full justify-start gap-2 text-foreground hover:bg-muted">
+                      <ViewTransitionLink to="/chat" onClick={closeMenu}>
+                        <MessageCircle className="h-4 w-4 text-muted-foreground" />
+                        Chat
+                      </ViewTransitionLink>
+                    </Button>
+
+                    <Button asChild variant="ghost" className="w-full justify-start gap-2 text-foreground hover:bg-muted">
+                      <ViewTransitionLink to="/teams" onClick={closeMenu}>
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        Team rosters
+                      </ViewTransitionLink>
+                    </Button>
+
+                    <Button asChild variant="ghost" className="w-full justify-start gap-2 text-foreground hover:bg-muted">
                       <ViewTransitionLink to="/leaderboard" onClick={closeMenu}>
                         <Trophy className="h-4 w-4 text-muted-foreground" />
-                        Player Leaderboard
+                        Lifetime leaderboard
                       </ViewTransitionLink>
                     </Button>
 
                     <Button asChild variant="ghost" className="w-full justify-start gap-2 text-foreground hover:bg-muted">
                       <ViewTransitionLink to="/history" onClick={closeMenu}>
                         <History className="h-4 w-4 text-muted-foreground" />
-                        History
+                        Past seasons
                       </ViewTransitionLink>
                     </Button>
 

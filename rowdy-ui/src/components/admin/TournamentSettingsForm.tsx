@@ -113,6 +113,10 @@ export default function TournamentSettingsForm({
   const [teamB, setTeamB] = useState<TeamFormState>(teamToForm(tournament.teamB));
   // League (Putt Pirates): four 4-man teams with a captain each.
   const [leagueTeams, setLeagueTeams] = useState<LeagueTeamFormState[]>(leagueTeamsToForm(tournament.leagueTeams));
+  // Carried-in standings, edited as JSON (rarely touched; set by the season seed).
+  const [priorJson, setPriorJson] = useState(
+    tournament.priorStandings ? JSON.stringify(tournament.priorStandings, null, 2) : ""
+  );
   const [error, setError] = useState<string | null>(null);
 
   const playerNameById = useMemo(() => {
@@ -206,6 +210,15 @@ export default function TournamentSettingsForm({
       throw new Error("Year must be a number.");
     }
 
+    const parsePrior = (): TournamentUpdates["priorStandings"] => {
+      const raw = priorJson.trim();
+      if (!raw) return null;
+      let parsed: unknown;
+      try { parsed = JSON.parse(raw); } catch { throw new Error("Prior standings must be valid JSON."); }
+      if (typeof parsed !== "object" || parsed === null) throw new Error("Prior standings must be a JSON object.");
+      return parsed as TournamentUpdates["priorStandings"];
+    };
+
     // League teams: blank rows are dropped; a named team needs a captain on it.
     const seen = new Map<string, string>();
     const cleanLeagueTeams = leagueTeams
@@ -238,6 +251,7 @@ export default function TournamentSettingsForm({
       commentsEnabled,
       test,
       leagueTeams: cleanLeagueTeams.length > 0 ? cleanLeagueTeams : null,
+      priorStandings: parsePrior(),
       teamA: buildTeam(teamA),
       teamB: buildTeam(teamB),
     };
@@ -578,6 +592,20 @@ export default function TournamentSettingsForm({
             </FieldGroup>
           );
         })}
+
+        <FieldGroup
+          title="Carried-in standings"
+          description="Results the league scored before the app (per-player W/L/T and each team's month points). The app adds its own matches on top. Blank = none."
+        >
+          <textarea
+            value={priorJson}
+            onChange={(e) => setPriorJson(e.target.value)}
+            rows={8}
+            spellCheck={false}
+            placeholder='{ "asOf": "…", "players": { "pPhilSalazar": { "mp": 6, "w": 5, "l": 0, "t": 1 } }, "teams": { "crackersQueso": { "2026PuttPirates-R03": { "points": 0.5 } } } }'
+            className={cn(inputClass, "font-mono text-xs")}
+          />
+        </FieldGroup>
 
         <details className="rounded-xl border border-border/70 p-3">
           <summary className="cursor-pointer text-sm font-semibold text-muted-foreground">

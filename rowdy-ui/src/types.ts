@@ -209,6 +209,20 @@ export type TournamentDoc = {
   // two SIDES (teamA/teamB) — two members of one league team can be drawn
   // against each other. Present ⇒ the app renders the league home/standings.
   leagueTeams?: LeagueTeam[];
+  // LEAGUE: standings carried in from before the app (see PriorStandings).
+  priorStandings?: PriorStandings;
+};
+
+/**
+ * Standings carried in from before the app (Putt Pirates 2026 started on paper).
+ * Added on top of what the app computes from its own matches: a player's row
+ * starts from `players[pid]`, and a team's month cell from `teams[teamId][roundId]`
+ * (`bonus` = that team already took the month's extra point).
+ */
+export type PriorStandings = {
+  asOf?: string;
+  players: Record<string, { mp: number; w: number; l: number; t: number }>;
+  teams: Record<string, Record<string, { points: number; bonus?: boolean }>>;
 };
 
 /** A season-long 4-man league team (Putt Pirates). */

@@ -44,6 +44,54 @@ function requireString(value: unknown, field: string): string {
 // TOURNAMENT MANAGEMENT
 // ============================================================================
 
+/** Validates prior (carried-in) standings: whole-number records, numeric month points. */
+function sanitizePriorStandings(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new HttpsError("invalid-argument", `${label} must be an object`);
+  }
+  const v = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  if (v.asOf !== undefined) {
+    if (typeof v.asOf !== "string" || v.asOf.length > 80) throw new HttpsError("invalid-argument", `${label}.asOf must be a short string`);
+    out.asOf = v.asOf;
+  }
+  const players: Record<string, { mp: number; w: number; l: number; t: number }> = {};
+  const rawPlayers = (v.players ?? {}) as Record<string, unknown>;
+  if (typeof rawPlayers !== "object" || rawPlayers === null) throw new HttpsError("invalid-argument", `${label}.players must be an object`);
+  for (const [pid, rec] of Object.entries(rawPlayers)) {
+    const r = (rec ?? {}) as Record<string, unknown>;
+    const n = (k: string) => {
+      const x = r[k] ?? 0;
+      if (typeof x !== "number" || !Number.isInteger(x) || x < 0 || x > 60) {
+        throw new HttpsError("invalid-argument", `${label}.players.${pid}.${k} must be a whole number`);
+      }
+      return x;
+    };
+    const w = n("w"), l = n("l"), t = n("t");
+    const mp = r.mp === undefined ? w + l + t : n("mp");
+    if (mp !== w + l + t) throw new HttpsError("invalid-argument", `${label}.players.${pid}: mp must equal w + l + t`);
+    players[pid] = { mp, w, l, t };
+  }
+  out.players = players;
+  const teams: Record<string, Record<string, { points: number; bonus?: boolean }>> = {};
+  const rawTeams = (v.teams ?? {}) as Record<string, unknown>;
+  if (typeof rawTeams !== "object" || rawTeams === null) throw new HttpsError("invalid-argument", `${label}.teams must be an object`);
+  for (const [teamId, months] of Object.entries(rawTeams)) {
+    if (typeof months !== "object" || months === null) throw new HttpsError("invalid-argument", `${label}.teams.${teamId} must be an object`);
+    teams[teamId] = {};
+    for (const [roundId, cell] of Object.entries(months as Record<string, unknown>)) {
+      const c = (cell ?? {}) as Record<string, unknown>;
+      const points = c.points ?? 0;
+      if (typeof points !== "number" || !Number.isFinite(points) || points < 0 || points * 2 !== Math.round(points * 2)) {
+        throw new HttpsError("invalid-argument", `${label}.teams.${teamId}.${roundId}.points must be a non-negative half-point number`);
+      }
+      teams[teamId][roundId] = { points, ...(c.bonus === true ? { bonus: true } : {}) };
+    }
+  }
+  out.teams = teams;
+  return out;
+}
+
 /**
  * Validates the league teams array (Putt Pirates): unique ids, a captain who
  * is on their own team, and no player on two teams. Returns a clean copy.
@@ -259,6 +307,9 @@ export const updateTournament = onCall(async (request) => {
         // League (Putt Pirates): the 4-man season teams. null clears them, which
         // also turns the league home/standings off for this tournament.
         toMerge.leagueTeams = value === null ? FieldValue.delete() : sanitizeLeagueTeams(value, "updates.leagueTeams");
+        break;
+      case "priorStandings":
+        toMerge.priorStandings = value === null ? FieldValue.delete() : sanitizePriorStandings(value, "updates.priorStandings");
         break;
       default:
         throw new HttpsError("invalid-argument", `updates.${key} is not an editable field`);

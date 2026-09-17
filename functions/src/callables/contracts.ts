@@ -72,6 +72,12 @@ export interface TournamentUpdates {
   planAccessPlayerIds?: string[] | null;
   // League teams (Putt Pirates): the 4-man season teams. null clears them.
   leagueTeams?: LeagueTeamInput[] | null;
+  // League: standings carried in from before the app. null clears.
+  priorStandings?: {
+    asOf?: string;
+    players: Record<string, { mp: number; w: number; l: number; t: number }>;
+    teams: Record<string, Record<string, { points: number; bonus?: boolean }>>;
+  } | null;
   teamA?: TeamUpdates;
   teamB?: TeamUpdates;
 }

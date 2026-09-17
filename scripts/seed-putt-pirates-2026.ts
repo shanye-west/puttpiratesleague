@@ -7,6 +7,9 @@
  *   # an admin who isn't one of the 16 players: add --admin-name "Shane Peterson" to create the doc
  *   npx ts-node seed-putt-pirates-2026.ts --commit --results data/putt-pirates-2026-results.json
  *                                                             # pass 2: result-only backfill for played matches
+ *   npx ts-node seed-putt-pirates-2026.ts --commit --prior    # alternative to pass 2: carry in the league's
+ *                                                             #   August-update table as tournament.priorStandings,
+ *                                                             #   delete the already-played past matches, lock Mar–Jun
  *
  * Pass 1 creates every doc WITHOUT a manualResult. Results are a separate pass
  * because the seedMatchBoilerplate trigger merges `status` on create and could
@@ -91,6 +94,7 @@ const adminEmail = argValue("--admin-email");
 const adminPlayer = argValue("--admin-player");
 const adminName = argValue("--admin-name");
 const resultsFile = argValue("--results");
+const priorMode = args.includes("--prior");
 
 const serviceAccountPath = path.join(__dirname, "../service-account.json");
 if (!fs.existsSync(serviceAccountPath)) {
@@ -268,9 +272,104 @@ async function pass2(file: string) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Prior standings: the league's own table as of the August 2026 update
+// (setup/setup2.md). Added on top of whatever the app scores from here on.
+// ---------------------------------------------------------------------------
+
+const PRIOR_PLAYERS: Record<string, { mp: number; w: number; l: number; t: number }> = {
+  pPhilSalazar:     { mp: 6, w: 5, l: 0, t: 1 },
+  pNickPetersen:    { mp: 6, w: 3, l: 0, t: 3 },
+  pBrianChase:      { mp: 6, w: 4, l: 2, t: 0 },
+  pAaronMcGuinness: { mp: 5, w: 4, l: 1, t: 0 },
+  pTravisBuhl:      { mp: 5, w: 4, l: 1, t: 0 },
+  pMattRoberts:     { mp: 5, w: 2, l: 2, t: 1 },
+  pNigelOrozco:     { mp: 5, w: 2, l: 2, t: 1 },
+  pCraigBlouin:     { mp: 7, w: 2, l: 4, t: 1 },
+  pNealMuir:        { mp: 4, w: 2, l: 2, t: 0 },
+  pJasonPadula:     { mp: 5, w: 1, l: 2, t: 2 },
+  pChrisHertz:      { mp: 5, w: 2, l: 3, t: 0 },
+  pBrianMarrero:    { mp: 5, w: 2, l: 3, t: 0 },
+  pJoshMcGinnis:    { mp: 6, w: 1, l: 4, t: 1 },
+  pMichaelGiaimo:   { mp: 5, w: 1, l: 4, t: 0 },
+  pTravisBerg:      { mp: 5, w: 1, l: 4, t: 0 },
+  pDannyCostello:   { mp: 4, w: 1, l: 3, t: 0 },
+};
+// Team × month grid ("4 + 1" = 4 points + the bonus). Round ids: R03 = March … R09 = September.
+const R = (day: number) => roundId(day);
+const PRIOR_TEAMS: Record<string, Record<string, { points: number; bonus?: boolean }>> = {
+  wreckItRalph:    { [R(1)]: { points: 2 }, [R(2)]: { points: 4, bonus: true }, [R(3)]: { points: 2 }, [R(4)]: { points: 2.5, bonus: true }, [R(5)]: { points: 0.5 }, [R(6)]: { points: 1.5 } },
+  beerCartBandits: { [R(1)]: { points: 3.5, bonus: true }, [R(2)]: { points: 2 }, [R(3)]: { points: 2.5, bonus: true }, [R(4)]: { points: 1.5 }, [R(5)]: { points: 1.5 } },
+  crackersQueso:   { [R(1)]: { points: 0.5 }, [R(2)]: { points: 2 }, [R(3)]: { points: 1.5 }, [R(4)]: { points: 2 }, [R(5)]: { points: 2 }, [R(6)]: { points: 2 }, [R(7)]: { points: 1 } },
+  rhinoWranglers:  { [R(1)]: { points: 2 }, [R(2)]: { points: 0 }, [R(3)]: { points: 2 }, [R(4)]: { points: 2 }, [R(5)]: { points: 1 }, [R(6)]: { points: 0.5 } },
+};
+/** Matches still to be played per the August update — everything else through September's Berg–Blouin is in the table above. */
+const STILL_TO_PLAY: [string, string][] = [
+  ["Buhl", "Padula"], ["Muir", "McGuinness"], ["Berg", "Costello"],                                       // July
+  ["Marrero", "Berg"], ["Muir", "Giaimo"], ["Orozco", "Costello"], ["Roberts", "Hertz"],                  // August
+];
+const PLAYED_SEPTEMBER: [string, string][] = [["Berg", "Blouin"]];
+
+async function priorPass() {
+  // Sanity: the table must be internally consistent before it goes anywhere.
+  const mpSum = Object.values(PRIOR_PLAYERS).reduce((s, r) => s + r.mp, 0);
+  for (const [pid, r] of Object.entries(PRIOR_PLAYERS)) if (r.mp !== r.w + r.l + r.t) throw new Error(`${pid}: mp != w+l+t`);
+  if (mpSum % 2 !== 0) throw new Error(`MP total ${mpSum} is odd — a match always counts twice`);
+  const teamPts = (id: string) => Object.values(PRIOR_TEAMS[id]).reduce((s, c) => s + c.points + (c.bonus ? 1 : 0), 0);
+  console.log(`
+=== PRIOR STANDINGS (${mpSum / 2} matches on paper) ===`);
+  console.log("team totals:", Object.keys(PRIOR_TEAMS).map((id) => `${id}=${teamPts(id)}`).join("  "));
+
+  const stillOpen = new Set<string>();
+  for (const m of SCHEDULE) m.pairings.forEach(([a, b], i) => {
+    const keep = STILL_TO_PLAY.some(([x, y]) => x === a && y === b);
+    if (keep) stillOpen.add(matchId(m.day, i + 1));
+  });
+  const toDelete: string[] = [];
+  for (const m of SCHEDULE) m.pairings.forEach(([a, b], i) => {
+    const id = matchId(m.day, i + 1);
+    const playedSept = PLAYED_SEPTEMBER.some(([x, y]) => x === a && y === b);
+    if ((m.day <= 6 && !stillOpen.has(id)) || playedSept) toDelete.push(id);
+  });
+  console.log(`keep open: ${[...stillOpen].join(", ")}`);
+  console.log(`delete (already on the paper table): ${toDelete.length} matches`);
+  if (toDelete.length + stillOpen.size !== 6 * 8 + 1) throw new Error("unexpected March–Aug match count");
+
+  const tRef = db.collection("tournaments").doc(TOURNAMENT_ID);
+  const tSnap = await tRef.get();
+  if (!tSnap.exists) { console.error("❌ season doc missing — run pass 1 first"); process.exit(1); }
+  console.log(`✅ ${TOURNAMENT_ID}.priorStandings (asOf "August 2026 update")`);
+  if (commit) {
+    await tRef.update({ priorStandings: { asOf: "August 2026 update", players: PRIOR_PLAYERS, teams: PRIOR_TEAMS } });
+  }
+
+  for (const id of toDelete) {
+    const ref = db.collection("matches").doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) { console.log(`⏭️  ${id} already gone`); continue; }
+    const m = snap.data()!;
+    const scored = Object.values(m.holes ?? {}).some((h: any) => h?.input?.teamAPlayerGross != null || h?.input?.teamBPlayerGross != null);
+    if (scored || m.status?.closed) { console.error(`❌ ${id} has scores/result — not deleting`); continue; }
+    console.log(`🗑️  delete ${id}`);
+    if (commit) { await ref.delete(); await sleep(100); }
+  }
+
+  // Rounds: matchIds pruned to what's left; March–June locked (nothing left to play there).
+  for (const m of SCHEDULE) {
+    if (m.day > 7) continue;
+    const rId = roundId(m.day);
+    const remaining = m.pairings.map((_, i) => matchId(m.day, i + 1)).filter((id) => !toDelete.includes(id));
+    const locked = m.day <= 4;
+    console.log(`✅ round ${rId} (${m.month}): matchIds=${remaining.length}${locked ? ", locked" : ""}`);
+    if (commit) await db.collection("rounds").doc(rId).update({ matchIds: remaining, ...(locked ? { locked: true } : {}) });
+  }
+}
+
 (async () => {
   console.log(commit ? "🔥 COMMIT mode — writing to Firestore" : "🧪 DRY RUN — nothing is written (add --commit)");
-  if (resultsFile) {
+  if (priorMode) {
+    await priorPass();
+  } else if (resultsFile) {
     await pass2(resultsFile);
   } else {
     await pass1();

@@ -13,9 +13,14 @@
  * when that can't be resolved from the app's data (a result-only match, a
  * captain without a card, a further tie) the bonus stays pending until an
  * admin sets `round.bonusTeamId`.
+ *
+ * `prior` (tournament.priorStandings) is what the league had already scored
+ * before the app: each player's row starts from it and each team's month cell
+ * starts from it, so the table matches the league's own and the app's matches
+ * add on top.
  */
 
-import type { LeagueTeam, MatchDoc, RoundDoc } from "../types";
+import type { LeagueTeam, MatchDoc, PriorStandings, RoundDoc } from "../types";
 
 export interface IndividualRow {
   playerId: string;
@@ -76,6 +81,8 @@ export interface StandingsInput {
   leagueTeams: LeagueTeam[];
   /** playerId → display name (for the name tiebreak / stable ordering). */
   names?: Record<string, string>;
+  /** Standings carried in from before the app. */
+  prior?: PriorStandings | null;
 }
 
 const PLAYOFF_SPOTS = 4;
@@ -124,15 +131,23 @@ export function monthBonus(
   round: RoundDoc,
   matches: MatchDoc[],
   leagueTeams: LeagueTeam[],
-  teamOf: Record<string, string>
+  teamOf: Record<string, string>,
+  prior?: PriorStandings | null
 ): MonthBonus {
   const pv = round.pointsValue ?? 1;
   const closedPts: Record<string, number> = {};
   const livePts: Record<string, number> = {};
-  for (const t of leagueTeams) { closedPts[t.id] = 0; livePts[t.id] = 0; }
-
   let anyMatch = false;
   let allClosed = true;
+  for (const t of leagueTeams) {
+    const carried = prior?.teams?.[t.id]?.[round.id];
+    closedPts[t.id] = carried?.points ?? 0;
+    livePts[t.id] = carried?.points ?? 0;
+    if (carried) anyMatch = true;
+    // The league already awarded this month's bonus before the app.
+    if (carried?.bonus) return { teamId: t.id, pending: false, reason: "override", leaderId: t.id };
+  }
+
   for (const m of matches) {
     const { a, b } = sideIds(m);
     if (!a || !b) continue;
@@ -181,7 +196,7 @@ export function monthBonus(
 }
 
 export function computeLeagueStandings(input: StandingsInput): LeagueStandings {
-  const { rounds, matchesByRound, leagueTeams, names = {} } = input;
+  const { rounds, matchesByRound, leagueTeams, names = {}, prior = null } = input;
   const teamOf: Record<string, string> = {};
   for (const t of leagueTeams) for (const pid of t.playerIds ?? []) teamOf[pid] = t.id;
 
@@ -193,6 +208,13 @@ export function computeLeagueStandings(input: StandingsInput): LeagueStandings {
     });
   // Every rostered player appears even before they've played.
   for (const pid of Object.keys(teamOf)) ensure(pid);
+  // Carried-in records: points = wins + half a point per halve.
+  for (const [pid, rec] of Object.entries(prior?.players ?? {})) {
+    const row = ensure(pid);
+    row.mp += rec.mp; row.w += rec.w; row.l += rec.l; row.t += rec.t;
+    const pts = rec.w + rec.t / 2;
+    row.points += pts; row.projectedPoints += pts;
+  }
 
   const grid: Record<string, Record<string, GridCell>> = {};
   const bonusByRound: Record<string, MonthBonus> = {};
@@ -207,7 +229,10 @@ export function computeLeagueStandings(input: StandingsInput): LeagueStandings {
     const pv = round.pointsValue ?? 1;
     const matches = matchesByRound[round.id] ?? [];
     const cellPts: Record<string, { points: number; projected: number }> = {};
-    for (const t of leagueTeams) cellPts[t.id] = { points: 0, projected: 0 };
+    for (const t of leagueTeams) {
+      const carried = prior?.teams?.[t.id]?.[round.id]?.points ?? 0;
+      cellPts[t.id] = { points: carried, projected: carried };
+    }
 
     for (const m of matches) {
       const { a, b } = sideIds(m);
@@ -236,7 +261,7 @@ export function computeLeagueStandings(input: StandingsInput): LeagueStandings {
       apply(b, pts.b, w === "teamB", w === "teamA");
     }
 
-    const bonus = monthBonus(round, matches, leagueTeams, teamOf);
+    const bonus = monthBonus(round, matches, leagueTeams, teamOf, prior);
     bonusByRound[round.id] = bonus;
     for (const t of leagueTeams) {
       const c = cellPts[t.id];
