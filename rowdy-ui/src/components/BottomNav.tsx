@@ -13,23 +13,24 @@ type Tab = {
   badgePrefix?: string;
 };
 
-// League flow: what's left to play → where everyone stands → the calendar → bets.
+// League flow: where everyone stands → what's left to play → the calendar → bets.
 // Chat and team rosters live in the hamburger menu.
 const TABS: Tab[] = [
   {
+    // The standings are the app's home page.
     to: "/",
-    label: "Matches",
-    Icon: Flag,
-    isActive: (p) => p === "/" || p.startsWith("/match"),
-    // Badge match results / lead changes (they deep-link to /match/…).
-    badgePrefix: "/match",
-  },
-  {
-    to: "/standings",
     label: "Standings",
     Icon: Trophy,
     isActive: (p) =>
-      p.startsWith("/standings") || p.startsWith("/teams") || p.startsWith("/player") || p.startsWith("/leaderboard"),
+      p === "/" || p.startsWith("/standings") || p.startsWith("/teams") || p.startsWith("/player") || p.startsWith("/leaderboard"),
+  },
+  {
+    to: "/matches",
+    label: "Matches",
+    Icon: Flag,
+    isActive: (p) => p.startsWith("/match"),
+    // Badge match results / lead changes (they deep-link to /match/…).
+    badgePrefix: "/match",
   },
   {
     to: "/season",

@@ -67,7 +67,7 @@ export default function LeagueHome({ tournament }: { tournament: TournamentDoc }
   return (
     <div className="space-y-6 px-4 py-6">
       {me && (
-        <ViewTransitionLink to="/standings" className="card-link-hover block">
+        <ViewTransitionLink to="/" className="card-link-hover block">
           <Card className="border-primary/30 bg-card/90">
             <CardContent className="flex items-center justify-between gap-3 py-3">
               <div className="min-w-0">

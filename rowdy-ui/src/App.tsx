@@ -7,7 +7,7 @@ import ScoreBlock from "./components/ScoreBlock";
 import ScoreTrackerBar from "./components/ScoreTrackerBar";
 import ChampionBanner from "./components/ChampionBanner";
 import OfflineImage from "./components/OfflineImage";
-import LeagueHome from "./components/league/LeagueHome";
+import LeagueStandingsView from "./components/league/LeagueStandingsView";
 import { LoadingEscalation } from "./components/LoadingScreen";
 import { HomePageSkeleton } from "./components/Skeleton";
 import { ViewTransitionLink } from "./components/ViewTransitionLink";
@@ -19,9 +19,10 @@ import { isLeagueTournament } from "./utils/leagueTeams";
 
 /**
  * Home. A league season (the Putt Pirates default — the tournament has
- * `leagueTeams`) renders LeagueHome: this month's matches, the individual and
- * team standings, and the month grid. A tournament without league teams falls
- * back to the original two-sided Cup scoreboard.
+ * `leagueTeams`) opens on the standings: the individual table with the playoff
+ * line, the team table, and the team × month grid. Matches to play live on
+ * their own tab (`/matches`). A tournament without league teams falls back to
+ * the original two-sided Cup scoreboard.
  */
 export default function App() {
   // Service worker registration + update polling live app-wide in main.tsx.
@@ -29,7 +30,7 @@ export default function App() {
   const isLeague = isLeagueTournament(tournament);
 
   // Cup scoreboard data (denormalized round totals). Skipped for a league
-  // season — LeagueHome runs its own subscription — by handing the hook null.
+  // season — the standings view runs its own subscription — by handing the hook null.
   const {
     loading: dataLoading,
     rounds,
@@ -75,7 +76,7 @@ export default function App() {
   if (isLeague) {
     return (
       <Layout title={tName} series={tSeries} tournamentLogo={tLogo}>
-        <LeagueHome tournament={tournament} />
+        <LeagueStandingsView tournament={tournament} showPlayCta />
       </Layout>
     );
   }

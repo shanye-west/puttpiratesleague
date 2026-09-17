@@ -20,7 +20,7 @@ const Match = lazyWithRecovery(() => import("./routes/Match"));
 const Round = lazyWithRecovery(() => import("./routes/Round"));
 const RoundRecap = lazyWithRecovery(() => import("./routes/RoundRecap"));
 const Teams = lazyWithRecovery(() => import("./routes/Teams"));
-const Standings = lazyWithRecovery(() => import("./routes/Standings"));
+const Matches = lazyWithRecovery(() => import("./routes/Matches"));
 const Season = lazyWithRecovery(() => import("./routes/Season"));
 const Leaderboard = lazyWithRecovery(() => import("./routes/Leaderboard"));
 const Sportsbook = lazyWithRecovery(() => import("./routes/Sportsbook"));
@@ -62,8 +62,10 @@ const router = createBrowserRouter(
         { path: "round/:roundId", element: <Round /> },
         { path: "round/:roundId/recap", element: <RoundRecap /> },
         { path: "match/:matchId", element: <Match /> },
-        { path: "standings", element: <Standings /> },
+        { path: "matches", element: <Matches /> },
         { path: "season", element: <Season /> },
+        // The standings ARE the home page; keep the path working for old links.
+        { path: "standings", element: <Navigate to="/" replace /> },
         { path: "teams", element: <Teams /> },
         { path: "leaderboard", element: <Leaderboard /> },
         { path: "sportsbook", element: <RequireAuth><Sportsbook /></RequireAuth> },
