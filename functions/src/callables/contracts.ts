@@ -406,6 +406,14 @@ export interface DeleteCourseRequest {
   courseId: string;
 }
 
+/** Player-callable (createCourse): add a course or a new tees for an existing course. */
+export type CreateCourseRequest = CourseInput;
+
+export interface CreateCourseResult extends AdminResult {
+  courseId: string;
+  created: true;
+}
+
 // ============================================================================
 // STATS
 // ============================================================================

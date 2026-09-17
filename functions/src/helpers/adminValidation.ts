@@ -25,6 +25,18 @@ export interface CourseValidationResult {
   course?: CourseInput;
 }
 
+/**
+ * Case/whitespace-insensitive identity of a course+tees combo, used to stop
+ * players creating "Chambers Bay / Blue" twice from the match setup panel.
+ * Each `courses/{id}` doc is one course-and-tees combination, so the key is
+ * the pair, not just the name.
+ */
+export function courseKey(name: unknown, tees: unknown): string {
+  const norm = (v: unknown) =>
+    (typeof v === "string" ? v : "").trim().toLowerCase().replace(/\s+/g, " ");
+  return `${norm(name)}|${norm(tees)}`;
+}
+
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
 }

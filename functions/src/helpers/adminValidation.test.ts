@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  courseKey,
   describeRoundDeletionBlock,
   isSelfDemotion,
   playerTournamentReferences,
@@ -148,5 +149,20 @@ describe("isSelfDemotion", () => {
   it("allows granting yourself (no-op) and changing others", () => {
     expect(isSelfDemotion("pMe", "pMe", true)).toBe(false);
     expect(isSelfDemotion("pMe", "pOther", false)).toBe(false);
+  });
+});
+
+describe("courseKey", () => {
+  it("ignores case and surrounding/inner whitespace", () => {
+    expect(courseKey("Chambers  Bay ", " blue")).toBe(courseKey("chambers bay", "Blue"));
+  });
+
+  it("treats different tees of the same course as different keys", () => {
+    expect(courseKey("Chambers Bay", "Blue")).not.toBe(courseKey("Chambers Bay", "White"));
+  });
+
+  it("treats missing tees as empty", () => {
+    expect(courseKey("Chambers Bay", undefined)).toBe(courseKey("Chambers Bay", ""));
+    expect(courseKey("Chambers Bay", null)).toBe("chambers bay|");
   });
 });

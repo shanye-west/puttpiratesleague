@@ -2180,6 +2180,8 @@ export const settleMatchBets = onDocumentWritten("matches/{matchId}", withTrigge
 export { seedMatch, editMatch, recalculateMatchStrokes } from "./callables/matchOps.js";
 // League (Putt Pirates): per-match course/strokes set by the players; result-only matches.
 export { setupMatchCard } from "./callables/matchSetupOps.js";
+// League: any player can add a course / tees from the match setup panel.
+export { createCourse } from "./callables/playerCourseOps.js";
 export { adminSetMatchResult, adminClearMatchResult } from "./callables/matchResultOps.js";
 export { recalculateAllStats, computeRoundRecap } from "./callables/statsOps.js";
 

@@ -81,7 +81,7 @@ Most collections are **public-read**; `bets`, `betSettlements`, and `comments` (
 | `players/{id}` | `displayName`, `authUid` (query key), `isAdmin`. PII lives in server-only `players/{id}/private/profile` |
 | `rounds/{id}` | A month: `tournamentId`, `day`, **`name`**, `format`, `pointsValue`, `locked`, `courseId` (null in league), **`bonusTeamId?`**, denormalized `pointTotals`, `matchIds[]` |
 | `matches/{id}` | `teamAPlayers`/`teamBPlayers` (`{playerId, strokesReceived[18]}`), **`playerIds[]`**, **`courseId?`**, `courseHandicaps[]`, **`manualResult?`**, `strokesSetAt/By`, `holes.{1..18}.input`, computed `status`/`result`, `authorizedUids`, cache fields (`_computeSig`, `_lastComputed`) |
-| `courses/{id}` | `name`, `tees`, `par`, `rating`, `slope`, `holes[18]` (`number`, `par`, `hcpIndex`, `yards`) — admin-maintained; players pick from this list |
+| `courses/{id}` | `name`, `tees`, `par`, `rating`, `slope`, `holes[18]` (`number`, `par`, `hcpIndex`, `yards`) — one doc per course+tees combination. Any player can add one (or new tees for an existing course) from the match setup panel via `createCourse`; edit/delete stay admin-only |
 | `playerMatchFacts/{matchId}_{playerId}` | Immutable per-player, per-match stats (`manualResult: true` for result-only) |
 | `playerStats/{playerId}` | Subcollections `bySeries/{series}`, `byTournament/{id}`, `byRound/{id}` |
 | `roundRecaps/{roundId}` | Scoring leaders, per-hole averages, vs-all records |
@@ -105,6 +105,7 @@ The engine supports `singles`, `twoManBestBall`, `twoManShamble`, `twoManScrambl
   - `adminOps.ts` — tournament/round/player CRUD (incl. `leagueTeams`, `round.name`/`bonusTeamId`), locks, `adminOverrideHoleScore`, `linkAuthToPlayer` (+ auth fan-out), `setPlayerAdmin`.
   - `matchOps.ts` — `seedMatch`, `editMatch` (both tolerate a round without a course), `recalculateMatchStrokes` (Cup path).
   - **`matchSetupOps.ts` — `setupMatchCard`** (player/admin; see League).
+  - **`playerCourseOps.ts` — `createCourse`** (any linked player; validates with `validateCourseInput`, rejects a duplicate name+tees via `courseKey`).
   - **`matchResultOps.ts` — `adminSetMatchResult`, `adminClearMatchResult`.**
   - `betsOps.ts` / `settlementOps.ts`, `commentOps.ts`, `pushOps.ts`, `statsOps.ts`, `courseOps.ts`, `contracts.ts` (shared request/response types, mirrored in `rowdy-ui/src/api/adminContracts.ts`).
   - Cup-only (still deployed, unused): `draftOps.ts`, `pairingPlanOps.ts`, `sideEventOps.ts`, `captainsMatchOps.ts`. **Not deployed:** `rulesOfficial/askRulesOfficial.ts` (needs the `XAI_API_KEY` secret + App Check; its export is commented out in `index.ts`).
