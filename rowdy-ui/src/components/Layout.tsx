@@ -126,7 +126,7 @@ export function LayoutShell({ children }: LayoutShellProps) {
     // swap a body class + status-bar tint the way the Christmas Classic once did.
     document.body.classList.remove("theme-christmas");
     const meta = document.querySelector('meta[name="theme-color"]');
-    meta?.setAttribute("content", "#0b3d3a");
+    meta?.setAttribute("content", "#1c1c1e");
   }, [series]);
 
   // Close menu when tapping outside it (tapping the bell counts as outside, so

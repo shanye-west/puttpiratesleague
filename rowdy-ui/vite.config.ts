@@ -106,7 +106,7 @@ export default defineConfig({
         id: '/',
         lang: 'en',
         categories: ['sports'],
-        theme_color: '#0b3d3a', // brand teal — matches the header gradient
+        theme_color: '#1c1c1e', // near-black — matches the header
         background_color: '#f6f6f6', // matches --app-bg
         display: 'standalone', // Hides browser UI
         orientation: 'portrait', // mobile-only scoring app; scorecard scrolls horizontally in portrait
