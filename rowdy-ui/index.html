@@ -28,8 +28,11 @@
     <!-- Standardized mobile web app meta (keep apple-prefixed for older iOS compatibility) -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <!-- black-translucent lets the dark header bleed under the status bar (white text) -->
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Opaque status bar on purpose: with black-translucent, iOS 26+ paints a
+         Liquid Glass blur over the header's status-bar inset that no CSS can
+         disable. "default" insets the web view below the status bar instead.
+         iOS reads this once at install — existing installs must be re-added. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Putt Pirates" />
 
     <!-- Cold-start splash: paints immediately (before any JS parses) and is

@@ -159,6 +159,23 @@ export function LayoutShell({ children }: LayoutShellProps) {
 
   return (
     <>
+      {/* iOS 26+/27 tints the status bar from the background-color of a fixed
+          element at the viewport's top edge (not the sticky header, not
+          theme-color). This invisible 1px strip gives it the header color. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 1,
+          backgroundColor: "var(--header-bg)",
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      />
+
       {/* STICKY HEADER */}
       <header className="app-header">
         {/* Left: Back Button (if shown) + Tournament Logo */}

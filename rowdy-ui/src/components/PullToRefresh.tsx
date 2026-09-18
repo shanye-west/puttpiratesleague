@@ -88,10 +88,12 @@ export default function PullToRefresh({ children, onRefresh }: PullToRefreshProp
       onTouchEnd={handleTouchEnd}
       style={{ minHeight: '100vh' }} 
     >
-      {/* REFRESH INDICATOR */}
+      {/* REFRESH INDICATOR — sits just below the sticky header, in the gap the
+          content opens up as it's pulled down (the header covers anything above). */}
       <div style={{
         position: 'fixed',
-        top: 0, left: 0, right: 0,
+        top: 'calc(var(--header-height) + env(safe-area-inset-top, 0px))',
+        left: 0, right: 0,
         height: `${THRESHOLD}px`,
         display: 'flex',
         flexDirection: 'column',

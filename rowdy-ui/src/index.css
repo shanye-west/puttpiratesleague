@@ -84,6 +84,7 @@
     
     /* UI Colors */
     --app-bg: #f6f6f6;
+    --header-bg: #1c1c1e;
     --card-bg: #ffffff;
     --text-primary: #0f172a;
     --text-secondary: #64748b;
@@ -174,6 +175,12 @@
     }
   }
 
+  /* iOS Safari tints the status-bar strip from the root background, so make it
+     the header color; body/#root still paint the light app background. */
+  html {
+    background-color: var(--header-bg);
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
@@ -249,7 +256,7 @@
     @apply flex items-center justify-between px-4 sticky top-0 z-50;
     /* Solid (not translucent/blurred) so iOS Safari samples it for the
        status-bar tint instead of fading the light page background in. */
-    background: #1c1c1e;
+    background: var(--header-bg);
     color: var(--brand-accent);
     height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
     padding-top: env(safe-area-inset-top, 0px);
