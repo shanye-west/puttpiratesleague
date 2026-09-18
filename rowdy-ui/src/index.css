@@ -162,6 +162,24 @@
     mix-blend-mode: normal;
   }
 
+  /* Keep the bottom tab bar on screen during transitions. Unnamed, it's part of
+     the root snapshot and the sliding page-content layer paints over it. Only the
+     new snapshot is shown so the active tab switches instantly (the bar is
+     translucent, so stacking the old one underneath would ghost the old tab). */
+  .bottom-nav {
+    view-transition-name: bottom-nav;
+  }
+
+  ::view-transition-group(bottom-nav),
+  ::view-transition-new(bottom-nav) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  ::view-transition-old(bottom-nav) {
+    display: none;
+  }
+
   /* Vestibular safety: no page slides or menu pop when the OS asks for less motion */
   @media (prefers-reduced-motion: reduce) {
     ::view-transition-old(page-content),
