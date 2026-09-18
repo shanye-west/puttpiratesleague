@@ -38,7 +38,7 @@ const CATEGORIES: { key: NotificationCategory; label: string; description: strin
     label: "Tournament milestones",
     description: "A team takes the overall lead, a round goes final, or the Cup is decided.",
   },
-  { key: "chat", label: "Chat messages", description: "New comments and replies in match threads." },
+  { key: "chat", label: "Chat messages", description: "New comments and replies in match threads and the league chat." },
   { key: "sportsbook", label: "Sportsbook & bets", description: "When someone challenges you to a bet or takes one of yours." },
 ];
 

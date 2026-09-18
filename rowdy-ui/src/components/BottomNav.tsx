@@ -1,5 +1,5 @@
 import { useLocation } from "react-router-dom";
-import { Flag, Trophy, CalendarDays, DollarSign } from "lucide-react";
+import { Flag, Trophy, CalendarDays, DollarSign, MessageCircle } from "lucide-react";
 import { ViewTransitionLink } from "./ViewTransitionLink";
 import { useNotifications } from "../contexts/NotificationsContext";
 
@@ -13,7 +13,7 @@ type Tab = {
   badgePrefix?: string;
 };
 
-// League flow: where everyone stands → what's left to play → the calendar → bets.
+// League flow: where everyone stands → what's left to play → the calendar → bets → chat.
 // Team rosters live in the hamburger menu.
 const TABS: Tab[] = [
   {
@@ -45,6 +45,14 @@ const TABS: Tab[] = [
     isActive: (p) => p.startsWith("/sportsbook"),
     // Badge bet challenges/accepts (they deep-link to /sportsbook).
     badgePrefix: "/sportsbook",
+  },
+  {
+    to: "/chat",
+    label: "Chat",
+    Icon: MessageCircle,
+    isActive: (p) => p.startsWith("/chat"),
+    // Badge league-chat comments/replies (they deep-link to /chat).
+    badgePrefix: "/chat",
   },
 ];
 

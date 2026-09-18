@@ -5,7 +5,7 @@ import Layout from "./Layout";
 import LoadingScreen from "./LoadingScreen";
 
 /**
- * Route guard for pages that require a signed-in user (Bets).
+ * Route guard for pages that require a signed-in user (Bets + Chat).
  *
  * This is the UX half of a two-layer gate: the real boundary is the Firestore
  * rules, which now require `request.auth != null` to read bets/betSettlements/
