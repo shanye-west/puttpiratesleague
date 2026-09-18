@@ -15,6 +15,7 @@ import {
   Download,
   Settings,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import PullToRefresh from "./PullToRefresh";
 import LoadingScreen from "./LoadingScreen";
@@ -36,6 +37,14 @@ import { useViewTransitionDirection, startViewTransitionSafe } from "../hooks/us
 import { useScrollRestoration } from "../hooks/useScrollRestoration";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { hardResetApp } from "../utils/swRecovery";
+
+// The app owner gets a dev-only "Hard reload" menu item to jump straight to the
+// latest deploy after shipping (keyed by player id, not email, so no PII ships
+// in the bundle).
+const HARD_RELOAD_PLAYER_ID = "pShanePeterson";
+// Shown under the button so you can tell at a glance which build is running.
+const BUILD_LABEL = `${__GIT_SHA__} · ${new Date(__BUILD_TIME__).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
 
 type LayoutProps = {
   title: string;
@@ -321,6 +330,24 @@ export function LayoutShell({ children }: LayoutShellProps) {
                           <Shield className="h-4 w-4 text-muted-foreground" />
                           Admin
                         </ViewTransitionLink>
+                      </Button>
+                    )}
+
+                    {player?.id === HARD_RELOAD_PLAYER_ID && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-auto w-full justify-start gap-2 py-2 text-foreground hover:bg-muted"
+                        onClick={() => {
+                          closeMenu();
+                          void hardResetApp();
+                        }}
+                      >
+                        <RefreshCw className="h-4 w-4 text-muted-foreground" />
+                        <span className="flex flex-col items-start">
+                          <span>Hard reload</span>
+                          <span className="text-[0.65rem] font-normal text-muted-foreground">{BUILD_LABEL}</span>
+                        </span>
                       </Button>
                     )}
 
