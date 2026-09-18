@@ -14,7 +14,7 @@ type Tab = {
 };
 
 // League flow: where everyone stands → what's left to play → the calendar → bets.
-// Chat and team rosters live in the hamburger menu.
+// Team rosters live in the hamburger menu.
 const TABS: Tab[] = [
   {
     // The standings are the app's home page.
