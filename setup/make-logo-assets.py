@@ -20,7 +20,8 @@ from PIL import Image
 
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "putt-pirates-logo-source.jpg")
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "rowdy-ui", "public")
-TEAL = (11, 61, 58, 255)   # --brand-primary / manifest theme_color
+TEAL = (11, 61, 58, 255)   # --brand-primary
+TILE = (28, 28, 30, 255)   # --header-bg / manifest theme_color (#1c1c1e)
 
 # --- 1. Key the grey background out, keeping anti-aliased edges -------------
 g = Image.open(SRC).convert("L")
@@ -66,15 +67,15 @@ canvas(mark, 512, 0.94).save(f"{OUT}/images/puttpirates-logo.png")
 # (--card-bg is always #ffffff), so anything sitting on a card needs this one.
 canvas(dark.crop(bbox), 512, 0.94).save(f"{OUT}/images/puttpirates-logo-dark.png")
 
-# Home-screen icons: white on a solid teal tile so they read on any launcher
+# Home-screen icons: white on a solid near-black tile (matches the header) so they read on any launcher
 # background (and in a light browser tab strip, for the favicon).
-canvas(mark, 192, 0.76, TEAL).save(f"{OUT}/pwa-192x192.png")
-canvas(mark, 512, 0.76, TEAL).save(f"{OUT}/pwa-512x512.png")
+canvas(mark, 192, 0.76, TILE).save(f"{OUT}/pwa-192x192.png")
+canvas(mark, 512, 0.76, TILE).save(f"{OUT}/pwa-512x512.png")
 
 # Maskable: Android crops to a circle/squircle, so keep the art well inside the
 # inner-80% safe zone and never rely on transparency.
-canvas(mark, 512, 0.60, TEAL).save(f"{OUT}/pwa-maskable-512x512.png")
+canvas(mark, 512, 0.60, TILE).save(f"{OUT}/pwa-maskable-512x512.png")
 
 # Favicon tile — small, so give the mark a little more room.
-canvas(mark, 64, 0.82, TEAL).save(f"{OUT}/favicon-64.png")
+canvas(mark, 64, 0.82, TILE).save(f"{OUT}/favicon-64.png")
 print("wrote: images/puttpirates-logo{,-dark}.png, pwa-192x192, pwa-512x512, pwa-maskable-512x512, favicon-64")
