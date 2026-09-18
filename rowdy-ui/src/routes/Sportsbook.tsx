@@ -32,7 +32,7 @@ import ConfirmDialog from "../components/admin/ConfirmDialog";
 import BetMatchup, { type MatchupSide } from "../components/BetMatchup";
 import SportsbookHowTo from "../components/SportsbookHowTo";
 import CaptainsBetSheet from "../components/CaptainsBetSheet";
-import { isLeagueTournament } from "../utils/leagueTeams";
+import { isLeagueTournament, leagueTeamColor, teamOfPlayer } from "../utils/leagueTeams";
 import { useCaptainsMatch } from "../hooks/useCaptainsMatch";
 import type { BetDoc, BetOverUnderMetric, BetSide, MatchDoc, PlayerDoc, RoundDoc } from "../types";
 
@@ -388,6 +388,30 @@ export default function Sportsbook() {
     () => allMatches.filter((m) => !matchHasStarted(m)),
     [allMatches, matchHasStarted]
   );
+  // The whole season's schedule exists up front, so a flat list of every
+  // unstarted match ran to dozens of rows. Group them by month (round), in
+  // schedule order; the board shows one month at a time.
+  const matchMonths = useMemo(
+    () =>
+      rounds
+        .map((r) => ({ round: r, matches: (matchesByRound[r.id] ?? []).filter((m) => !matchHasStarted(m)) }))
+        .filter((g) => g.matches.length > 0),
+    [rounds, matchesByRound, matchHasStarted]
+  );
+  // Selected month lives in the URL (like the tab) so Back from a scorecard
+  // lands on the same month. Defaults to the earliest month with a bettable
+  // match — i.e. the current one.
+  const monthParam = searchParams.get("month");
+  const selectedMonth = matchMonths.find((g) => g.round.id === monthParam) ?? matchMonths[0];
+  const setMonth = (roundId: string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("month", roundId);
+        return next;
+      },
+      { replace: true }
+    );
 
   const ledger = useMemo(() => computeLedger(bets), [bets]);
   const h2h = useMemo(() => headToHead(bets, settlements, player?.id), [bets, settlements, player?.id]);
@@ -454,6 +478,21 @@ export default function Sportsbook() {
   const roundOfferCount = (roundId: string) =>
     openOffers.filter((b) => b.market === "round" && b.roundId === roundId).length;
   const matchOfferCount = (matchId: string) => openOffers.filter((b) => b.matchId === matchId).length;
+  const isMyMatch = (m: MatchDoc): boolean =>
+    !!player && [...(m.teamAPlayers ?? []), ...(m.teamBPlayers ?? [])].some((p) => p.playerId === player.id);
+  /** Within a month: your own match first, then matches with offers waiting, then schedule order. */
+  const sortMonthMatches = (ms: MatchDoc[]): MatchDoc[] =>
+    ms
+      .map((m, i) => ({ m, i, mine: isMyMatch(m) ? 0 : 1, offers: matchOfferCount(m.id) }))
+      .sort((a, z) => a.mine - z.mine || z.offers - a.offers || a.i - z.i)
+      .map((x) => x.m);
+  /** Accent bar: each player's league-team color in a league, the Cup team colors otherwise. */
+  const matchAccent = (m: MatchDoc): { teamA: string; teamB: string } => {
+    if (!isLeague) return teamColors;
+    const colorOf = (pid: string | undefined) =>
+      leagueTeamColor(pid ? teamOfPlayer(tournament.leagueTeams, pid) : null, tournament.leagueTeams);
+    return { teamA: colorOf(m.teamAPlayers?.[0]?.playerId), teamB: colorOf(m.teamBPlayers?.[0]?.playerId) };
+  };
 
   const activeCount =
     myBets.incomingChallenges.length + myBets.myOpenOffers.length + myBets.active.length;
@@ -721,37 +760,60 @@ export default function Sportsbook() {
                   </Card>
                 </BetGroup>
 
-                <BetGroup
-                  title="Matches"
-                  count={showCup ? bettableMatches.length : 0}
-                  trailing={<CountTag>{bettableMatches.length}</CountTag>}
-                >
-                  <Card className="overflow-hidden">
-                    <ul className="divide-y divide-border/60">
-                      {bettableMatches.map((m) => {
-                        const r = m.roundId ? roundsById[m.roundId] : undefined;
-                        return (
-                          <li key={m.id}>
-                            <BetEventRow
-                              label={
-                                <>
-                                  <span className="block truncate">
-                                    {sideLastNames(m.teamAPlayers)} <span className="font-normal text-muted-foreground">vs</span>
-                                  </span>
-                                  <span className="block truncate">{sideLastNames(m.teamBPlayers)}</span>
-                                </>
-                              }
-                              subtitle={r ? `${r.name?.trim() || (r.day ? `Round ${r.day}` : "Round")} · ${formatRoundType(r.format)}` : undefined}
-                              accent={teamColors}
-                              openCount={matchOfferCount(m.id)}
-                              onClick={() => setSelectedEvent({ kind: "match", matchId: m.id })}
-                            />
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </Card>
-                </BetGroup>
+                {showCup && selectedMonth && (
+                  <BetGroup
+                    title="Matches"
+                    count={selectedMonth.matches.length}
+                    trailing={<CountTag>{selectedMonth.matches.length}</CountTag>}
+                  >
+                    {matchMonths.length > 1 && (
+                      <MonthPicker
+                        months={matchMonths.map((g) => ({
+                          id: g.round.id,
+                          label: shortRoundLabel(g.round),
+                          offers: g.matches.reduce((n, m) => n + matchOfferCount(m.id), 0),
+                        }))}
+                        selectedId={selectedMonth.round.id}
+                        onSelect={setMonth}
+                      />
+                    )}
+                    <Card className="overflow-hidden">
+                      <ul className="divide-y divide-border/60">
+                        {sortMonthMatches(selectedMonth.matches).map((m) => {
+                          const mine = isMyMatch(m);
+                          // Singles fit on one line; Cup-style pairs stack.
+                          const singles = (m.teamAPlayers?.length ?? 0) <= 1 && (m.teamBPlayers?.length ?? 0) <= 1;
+                          return (
+                            <li key={m.id} className={mine ? "bg-muted/40" : undefined}>
+                              <BetEventRow
+                                label={
+                                  singles ? (
+                                    <span className="block truncate">
+                                      {sideLastNames(m.teamAPlayers)}{" "}
+                                      <span className="font-normal text-muted-foreground">vs</span>{" "}
+                                      {sideLastNames(m.teamBPlayers)}
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className="block truncate">
+                                        {sideLastNames(m.teamAPlayers)} <span className="font-normal text-muted-foreground">vs</span>
+                                      </span>
+                                      <span className="block truncate">{sideLastNames(m.teamBPlayers)}</span>
+                                    </>
+                                  )
+                                }
+                                subtitle={mine ? "Your match" : isLeague ? undefined : formatRoundType(selectedMonth.round.format)}
+                                accent={matchAccent(m)}
+                                openCount={matchOfferCount(m.id)}
+                                onClick={() => setSelectedEvent({ kind: "match", matchId: m.id })}
+                              />
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </Card>
+                  </BetGroup>
+                )}
               </>
             )}
 
@@ -1239,6 +1301,64 @@ function BetGroup({
       <SectionLabel trailing={trailing}>{title}</SectionLabel>
       <div className="space-y-3">{children}</div>
     </section>
+  );
+}
+
+const MONTH_NAMES = [
+  "january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december",
+];
+/** A month chip's label: "September" → "Sep"; other round names pass through. */
+function shortRoundLabel(r: RoundDoc): string {
+  const name = r.name?.trim() || (r.day ? `Round ${r.day}` : "Round");
+  return MONTH_NAMES.includes(name.toLowerCase()) ? name.slice(0, 3) : name;
+}
+
+/**
+ * The Open Bets month selector: one chip per month that still has bettable
+ * matches. A chip carries a small count when offers are waiting in that month,
+ * so action in a later month isn't hidden behind an unselected chip.
+ * Scrolls sideways if a season has more months than fit.
+ */
+function MonthPicker({
+  months,
+  selectedId,
+  onSelect,
+}: {
+  months: { id: string; label: string; offers: number }[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex w-max gap-2" role="tablist" aria-label="Month">
+        {months.map((mo) => {
+          const active = mo.id === selectedId;
+          return (
+            <button
+              key={mo.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onSelect(mo.id)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                active ? "bg-foreground text-background" : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {mo.label}
+              {mo.offers > 0 && (
+                <span
+                  className="rounded-full bg-emerald-500 px-1.5 text-[0.6rem] font-bold leading-4 text-white tabular-nums"
+                  aria-label={`${mo.offers} open`}
+                >
+                  {mo.offers}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
