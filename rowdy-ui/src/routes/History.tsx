@@ -15,7 +15,7 @@ type TournamentWinner = { winnerKey: "teamA" | "teamB"; viaTiebreaker: boolean }
 
 const SERIES_CONFIG: Record<TournamentSeries, { label: string; icon: string; color: string }> = {
   // Use public assets for series logos
-  puttPirates: { label: "Putt Pirates", icon: "/images/puttpirates-logo.svg", color: "var(--brand-primary)" },
+  puttPirates: { label: "Putt Pirates", icon: "/images/puttpirates-logo-dark.png", color: "var(--brand-primary)" },
 };
 
 export default function History() {

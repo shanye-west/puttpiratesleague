@@ -180,7 +180,7 @@ export function LayoutShell({ children }: LayoutShellProps) {
               src={tournamentLogo}
               alt="Tournament Logo"
               fallbackIcon="⛳"
-              fallbackSrc="/images/puttpirates-logo.svg"
+              fallbackSrc="/images/puttpirates-logo.png"
               style={{ height: 40, width: 40, objectFit: "contain" }}
             />
           </ViewTransitionLink>

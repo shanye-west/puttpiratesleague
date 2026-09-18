@@ -32,7 +32,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      includeAssets: ["images/puttpirates-logo.svg"],
+      includeAssets: ["images/puttpirates-logo.png", "images/puttpirates-logo-dark.png", "favicon-64.png"],
       // autoUpdate: the generated SW uses skipWaiting + clientsClaim, so a new
       // version installs, activates, and reloads the page automatically. This
       // closes the window where a stale old SW kept serving old chunks after a
