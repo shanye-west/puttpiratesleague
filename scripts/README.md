@@ -1,4 +1,4 @@
-LAST UPDATED ON WED SEP 16, 2026
+LAST UPDATED ON THU SEP 17, 2026
 
 # Putt Pirates Golf Scripts
 
@@ -185,9 +185,38 @@ If you'd like, I can add a short script to flip the flag from the command line (
 
 ## Auth Scripts
 
+### Onboard Players (create the account *and* link it) — start here
+
+`onboard-players.ts` is the one-stop path for giving a player a login. The app
+has **no self-signup** (`routes/Login.tsx` is sign-in + "Forgot password?" only),
+so an admin has to create the Auth user first. For each entry it creates the
+Auth account with a random throwaway password, writes `authUid` to the player
+doc, stores the email in the server-only `players/{id}/private/profile`, and
+fans the uid into `authorizedUids` of every **open** match the player is in
+(a match's `authorizedUids` is derived at seed time, so a player linked
+afterwards otherwise can't score matches that already exist).
+
+```bash
+# data/player-emails.json (gitignored — it holds real addresses):
+#   [ { "playerId": "pChrisHertz", "displayName": "Chris Hertz", "email": "chris@example.com" } ]
+npx ts-node onboard-players.ts --input data/player-emails.json            # dry run
+npx ts-node onboard-players.ts --input data/player-emails.json --commit   # apply
+```
+
+It refuses to run against any project but `puttpiratesgolf`, validates the
+whole input before writing anything (bad emails, a player listed twice with
+different addresses, one email claimed by two players), reuses an Auth account
+that already exists rather than re-passwording it, and won't steal a uid that's
+already linked to a different player. **Safe to re-run** — every write is
+idempotent, so this is also the script for linking stragglers later.
+
+Players never receive the generated password: tell them to open the app →
+Login → "Forgot password?" and set their own. The passwords it prints are only
+a fallback for when a reset email doesn't arrive.
+
 ### Link Single Auth User to Player
 
-Links a Firebase Auth user (by email) to a player doc (by player ID). Run this after creating an auth account for a player.
+Links a Firebase Auth user (by email) to a player doc (by player ID). Run this after creating an auth account for a player. Prefer `onboard-players.ts` above, which also creates the account and fixes up `authorizedUids`.
 
 ```bash
 npx ts-node link-auth-to-player.ts --email=player@email.com --playerId=pPlayerId
@@ -198,7 +227,12 @@ Example:
 npx ts-node link-auth-to-player.ts --email=jane.doe@example.com --playerId=pJaneDoe
 ```
 
-### Bulk Link Auth Users to Players
+### Bulk Link Auth Users to Players (superseded)
+
+> ⚠️ **Superseded by `onboard-players.ts`.** `bulk-link-auth.ts` writes the
+> email onto the *world-readable* player doc (PII belongs in
+> `private/profile`) and never updates `authorizedUids`, so players linked with
+> it can't score their already-seeded matches. Kept only for reference.
 
 Links multiple Firebase Auth users to player docs at once.
 
@@ -226,14 +260,17 @@ The script will:
 ## Player Auth Workflow
 
 1. **Collect emails** from all players
-2. **Create auth accounts** in Firebase Console with a temporary password (e.g., "Rowdy2025!")
-3. **Run link script** to connect auth accounts to player docs
+2. **Add them** to `data/player-emails.json` (gitignored), one `{ playerId, displayName, email }` per player
+3. **Dry run** `onboard-players.ts` and check every player resolves, then re-run with `--commit` —
+   this creates the Auth accounts and links them in one pass
 4. **Tell players** to:
    - Go to the app → Login
    - Click "Forgot password?"
    - Enter their email
-   - Check email for reset link
+   - Check email for reset link (tell them to check spam)
    - Set their own password
+
+Only hand out a generated password if a player's reset email never lands.
 
 ## Templates
 
