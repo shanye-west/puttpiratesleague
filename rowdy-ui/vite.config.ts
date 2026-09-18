@@ -163,6 +163,10 @@ export default defineConfig({
           if (/node_modules\/(react-dom|react|scheduler)\//.test(id)) return 'react-vendor';
           // Router changes rarely; keep it cacheable on its own
           if (id.includes('node_modules/react-router')) return 'router';
+          // FCM (+ the installations SDK it needs) is dynamically imported by
+          // messaging.ts only when push is used — leave it to Rollup so it gets
+          // its own lazy chunk instead of riding in the eager Firebase chunk.
+          if (/node_modules\/(@firebase\/(messaging|installations)|firebase\/messaging)\//.test(id)) return undefined;
           // Firebase SDK (~130KB gzip) - rarely changes
           if (/node_modules\/(@firebase|firebase|idb)\//.test(id)) return 'firebase';
           // clsx + tailwind-merge back the `cn()` helper used app-wide; eager

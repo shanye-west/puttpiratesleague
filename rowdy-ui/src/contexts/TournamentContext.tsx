@@ -7,7 +7,19 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo, type ReactNode } from "react";
-import { doc, onSnapshot, collection, query, where, limit, documentId, getDocs } from "firebase/firestore";
+import {
+  doc,
+  onSnapshot,
+  collection,
+  query,
+  where,
+  limit,
+  documentId,
+  getDocs,
+  getDocsFromCache,
+  getDocsFromServer,
+  type QuerySnapshot,
+} from "firebase/firestore";
 import { db } from "../firebase";
 import type { TournamentDoc, CourseDoc, PlayerDoc } from "../types";
 import { ensureTournamentTeamColors } from "../utils/teamColors";
@@ -17,18 +29,43 @@ import { useResolvedLoading } from "../hooks/useResolvedLoading";
 
 export type PlayerLookup = Record<string, PlayerDoc>;
 
-/** Batch-fetch player docs by id, chunked to Firestore's `in` limit (one-time read). */
-async function fetchPlayersByIds(ids: string[]): Promise<PlayerLookup> {
+function toLookup(snap: QuerySnapshot): PlayerLookup {
+  const out: PlayerLookup = {};
+  snap.forEach((d) => { out[d.id] = { id: d.id, ...d.data() } as PlayerDoc; });
+  return out;
+}
+
+/**
+ * Batch-fetch player docs by id, chunked to Firestore's `in` limit.
+ *
+ * Cache-first: a batch whose players are all in the on-device cache resolves
+ * from IndexedDB immediately (so names don't wait on the network at startup),
+ * then `onFresh` gets the server copy in the background. A batch with any id
+ * missing from the cache goes to the network as before.
+ */
+async function fetchPlayersByIds(ids: string[], onFresh?: (fresh: PlayerLookup) => void): Promise<PlayerLookup> {
   const out: PlayerLookup = {};
   if (ids.length === 0) return out;
   const batches: string[][] = [];
   for (let i = 0; i < ids.length; i += FIRESTORE_IN_QUERY_LIMIT) {
     batches.push(ids.slice(i, i + FIRESTORE_IN_QUERY_LIMIT));
   }
-  const snaps = await Promise.all(
-    batches.map((batch) => getDocs(query(collection(db, "players"), where(documentId(), "in", batch))))
+  const lookups = await Promise.all(
+    batches.map(async (batch) => {
+      const q = query(collection(db, "players"), where(documentId(), "in", batch));
+      try {
+        const cached = toLookup(await getDocsFromCache(q));
+        if (batch.every((id) => cached[id])) {
+          if (onFresh) getDocsFromServer(q).then((snap) => onFresh(toLookup(snap))).catch(() => {});
+          return cached;
+        }
+      } catch {
+        /* cache unavailable — fall through to a normal read */
+      }
+      return toLookup(await getDocs(q));
+    })
   );
-  snaps.forEach((snap) => snap.forEach((d) => { out[d.id] = { id: d.id, ...d.data() } as PlayerDoc; }));
+  lookups.forEach((l) => Object.assign(out, l));
   return out;
 }
 
@@ -91,7 +128,11 @@ export function TournamentProvider({ children, tournamentId }: TournamentProvide
     const missing = ids.filter((id) => id && !requestedPlayerIdsRef.current.has(id));
     if (missing.length === 0) return;
     missing.forEach((id) => requestedPlayerIdsRef.current.add(id));
-    fetchPlayersByIds(missing)
+    // Background server refresh of cache hits (e.g. a renamed player).
+    const applyFresh = (fresh: PlayerLookup) => {
+      if (Object.keys(fresh).length > 0) setPlayers((prev) => ({ ...prev, ...fresh }));
+    };
+    fetchPlayersByIds(missing, applyFresh)
       .then((fetched) => {
         if (Object.keys(fetched).length > 0) setPlayers((prev) => ({ ...prev, ...fetched }));
         // Mark every requested id resolved (even ones with no doc) so loaded flags settle.

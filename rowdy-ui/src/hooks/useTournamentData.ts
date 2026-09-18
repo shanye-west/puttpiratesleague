@@ -118,6 +118,12 @@ export function useTournamentData(options: UseTournamentDataOptions = {}): UseTo
   const rawLoading = !tournamentLoaded || (tournament !== null && (!roundsLoaded || !matchesLoaded));
   const loading = useResolvedLoading(rawLoading, tournament !== null);
 
+  // A prefetched tournament gets a fresh object on every snapshot of its doc.
+  // Reset only when *which* tournament changes (its id) — resetting on each
+  // refresh would blank the page and tear down the round/match listeners.
+  const usingPrefetched = prefetchedTournament !== undefined;
+  const prefetchedId = prefetchedTournament?.id ?? null;
+
   // -------------------------------------------------------------------------
   // 1) Subscribe to tournament
   // -------------------------------------------------------------------------
@@ -132,9 +138,9 @@ export function useTournamentData(options: UseTournamentDataOptions = {}): UseTo
     setError(null);
 
     // #3: caller already subscribes to this tournament (e.g. TournamentContext).
-    // Use it directly rather than opening a duplicate subscription on the same doc.
-    if (prefetchedTournament !== undefined) {
-      setTournament(prefetchedTournament);
+    // Use it directly rather than opening a duplicate subscription on the same
+    // doc; the effect below keeps it current.
+    if (usingPrefetched) {
       setTournamentLoaded(true);
       return;
     }
@@ -185,7 +191,12 @@ export function useTournamentData(options: UseTournamentDataOptions = {}): UseTo
       setRoundsLoaded(true);
       setMatchesLoaded(true);
     }
-  }, [fetchActive, tournamentId, prefetchedTournament]);
+  }, [fetchActive, tournamentId, usingPrefetched, prefetchedId]);
+
+  // Track the latest prefetched tournament doc without resetting anything.
+  useEffect(() => {
+    if (usingPrefetched) setTournament(prefetchedTournament);
+  }, [usingPrefetched, prefetchedTournament]);
 
   // -------------------------------------------------------------------------
   // 2) Subscribe to rounds when tournament is loaded
@@ -531,16 +542,21 @@ export function useTournamentData(options: UseTournamentDataOptions = {}): UseTo
     };
   }, [matchesByRound, rounds, tournament?.totalPointsAvailable, useDenormalized]);
 
-  return {
-    loading,
-    error,
-    tournament,
-    rounds,
-    matchesByRound,
-    courses,
-    coursesByRound,
-    stats,
-    roundStats,
-    totalPointsAvailable,
-  };
+  // Stable identity while nothing changed, so the shared season context doesn't
+  // re-render every consumer on unrelated provider renders.
+  return useMemo(
+    () => ({
+      loading,
+      error,
+      tournament,
+      rounds,
+      matchesByRound,
+      courses,
+      coursesByRound,
+      stats,
+      roundStats,
+      totalPointsAvailable,
+    }),
+    [loading, error, tournament, rounds, matchesByRound, courses, coursesByRound, stats, roundStats, totalPointsAvailable]
+  );
 }

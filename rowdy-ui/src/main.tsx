@@ -5,8 +5,26 @@ import { registerSW } from "virtual:pwa-register";
 import "./index.css";
 import "./firebase";
 import { lazyWithRecovery } from "./utils/lazyWithRecovery";
+import { prefetchMainRoutesWhenIdle } from "./utils/routePrefetch";
+import {
+  Chat,
+  History,
+  Leaderboard,
+  Login,
+  Match,
+  Matches,
+  NotificationSettings,
+  Player,
+  Round,
+  RoundRecap,
+  Season,
+  Sportsbook,
+  Teams,
+  Tournament,
+} from "./routes/lazyRoutes";
 import { AuthProvider } from "./contexts/AuthContext";
 import { TournamentProvider } from "./contexts/TournamentContext";
+import { SeasonDataProvider } from "./contexts/SeasonDataContext";
 import { LayoutProvider } from "./contexts/LayoutContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { NotificationsProvider } from "./contexts/NotificationsContext";
@@ -15,21 +33,8 @@ import ErrorBoundary, { NotFound } from "./components/ErrorBoundary";
 import { LayoutShell } from "./components/Layout";
 import RequireAuth from "./components/RequireAuth";
 
-// Lazy load routes for code splitting - reduces initial bundle size
-const Match = lazyWithRecovery(() => import("./routes/Match"));
-const Round = lazyWithRecovery(() => import("./routes/Round"));
-const RoundRecap = lazyWithRecovery(() => import("./routes/RoundRecap"));
-const Teams = lazyWithRecovery(() => import("./routes/Teams"));
-const Matches = lazyWithRecovery(() => import("./routes/Matches"));
-const Season = lazyWithRecovery(() => import("./routes/Season"));
-const Leaderboard = lazyWithRecovery(() => import("./routes/Leaderboard"));
-const Sportsbook = lazyWithRecovery(() => import("./routes/Sportsbook"));
-const Chat = lazyWithRecovery(() => import("./routes/Chat"));
-const Player = lazyWithRecovery(() => import("./routes/Player"));
-const Login = lazyWithRecovery(() => import("./routes/Login"));
-const History = lazyWithRecovery(() => import("./routes/History"));
-const NotificationSettings = lazyWithRecovery(() => import("./routes/NotificationSettings"));
-const Tournament = lazyWithRecovery(() => import("./routes/Tournament"));
+// Lazy load routes for code splitting - reduces initial bundle size. The public
+// routes live in routes/lazyRoutes so the prefetcher can preload them.
 const AdminLayout = lazyWithRecovery(() => import("./routes/admin/AdminLayout"));
 const AdminDashboard = lazyWithRecovery(() => import("./routes/admin/AdminDashboard"));
 const AdminTournamentLayout = lazyWithRecovery(() => import("./routes/admin/AdminTournamentLayout"));
@@ -177,14 +182,20 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AuthProvider>
       <TournamentProvider>
-        <LayoutProvider>
-          <ToastProvider>
-            <NotificationsProvider>
-              <RouterProvider router={router} />
-            </NotificationsProvider>
-          </ToastProvider>
-        </LayoutProvider>
+        <SeasonDataProvider>
+          <LayoutProvider>
+            <ToastProvider>
+              <NotificationsProvider>
+                <RouterProvider router={router} />
+              </NotificationsProvider>
+            </ToastProvider>
+          </LayoutProvider>
+        </SeasonDataProvider>
       </TournamentProvider>
     </AuthProvider>
   </React.StrictMode>
 );
+
+// Warm the main tabs' route chunks in the background after launch so the first
+// tap on each one doesn't wait on a chunk load.
+prefetchMainRoutesWhenIdle();

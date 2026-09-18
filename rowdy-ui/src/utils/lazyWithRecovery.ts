@@ -38,12 +38,35 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  *    loop-guarded) so the user never has to manually refresh, then rethrows so
  *    the route ErrorBoundary still renders its brief "Updating…" screen.
  */
+export type PreloadableLazy<T extends ComponentType> = LazyExoticComponent<T> & {
+  /**
+   * Load the route's chunk ahead of navigation. Once it resolves, the first
+   * render of the route doesn't suspend at all (no spinner flash). Failures are
+   * swallowed — a real navigation retries and runs the recovery path.
+   */
+  preload: () => Promise<void>;
+};
+
 export function lazyWithRecovery<T extends ComponentType>(
   factory: Importer<T>,
-): LazyExoticComponent<T> {
-  return lazy(async () => {
+): PreloadableLazy<T> {
+  // Set once the module has loaded (via preload or a render).
+  let loaded: { default: T } | undefined;
+
+  const Component = lazy(() => {
+    // React.lazy reads a thenable that settles synchronously without
+    // suspending, so an already-loaded route renders on the first pass instead
+    // of flashing the Suspense fallback for a tick.
+    if (loaded) {
+      const mod = loaded;
+      return { then: (resolve: (m: { default: T }) => void) => resolve(mod) } as unknown as Promise<{ default: T }>;
+    }
+    return loadWithRecovery();
+  }) as PreloadableLazy<T>;
+
+  async function loadWithRecovery(): Promise<{ default: T }> {
     try {
-      return await withTimeout(factory(), LOAD_TIMEOUT_MS);
+      return (loaded = await withTimeout(factory(), LOAD_TIMEOUT_MS));
     } catch (firstErr) {
       // A quick rejection might be a one-off blip → retry once. A timeout means
       // the request is wedged; re-importing the same URL won't help, so skip
@@ -51,13 +74,23 @@ export function lazyWithRecovery<T extends ComponentType>(
       if (!(firstErr instanceof ChunkTimeoutError)) {
         try {
           await delay(500);
-          return await withTimeout(factory(), LOAD_TIMEOUT_MS);
+          return (loaded = await withTimeout(factory(), LOAD_TIMEOUT_MS));
         } catch { /* fall through to recovery */ }
       }
       recoverFromStaleChunk();
       throw firstErr;
     }
-  });
+  }
+
+  Component.preload = () =>
+    loaded
+      ? Promise.resolve()
+      : factory().then(
+          (mod) => { loaded = mod; },
+          () => {},
+        );
+
+  return Component;
 }
 
 export default lazyWithRecovery;

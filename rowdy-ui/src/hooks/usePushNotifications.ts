@@ -40,6 +40,11 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** Just the "is push on for this device?" flag, for consumers that don't need the actions. */
+export function usePushOn(): boolean {
+  return useSyncExternalStore(subscribe, () => pushOnState);
+}
+
 export function usePushNotifications() {
   const { showToast, dismissToast } = useToast();
   const pushOn = useSyncExternalStore(subscribe, () => pushOnState);

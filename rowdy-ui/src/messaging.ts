@@ -11,15 +11,7 @@
  * token in localStorage only so disablePush can tell the server which one to drop.
  */
 
-import {
-  getMessaging,
-  getToken,
-  deleteToken,
-  onMessage,
-  isSupported,
-  type Messaging,
-  type MessagePayload,
-} from "firebase/messaging";
+import type { Messaging, MessagePayload } from "firebase/messaging";
 import { httpsCallable } from "firebase/functions";
 import { app, functions } from "./firebase";
 
@@ -35,13 +27,31 @@ const unregisterPushToken = httpsCallable<{ token: string }, { success: boolean 
   "unregisterPushToken"
 );
 
+// The FCM SDK (and the installations SDK it pulls in) is loaded on demand —
+// only when push is being enabled/disabled or is already on — so it stays out
+// of the startup bundle for everyone else.
+type MessagingSdk = typeof import("firebase/messaging");
+let sdkPromise: Promise<MessagingSdk> | null = null;
+function loadMessagingSdk(): Promise<MessagingSdk> {
+  if (!sdkPromise) {
+    sdkPromise = import("firebase/messaging").catch((err) => {
+      sdkPromise = null; // allow a retry after a failed chunk load
+      throw err;
+    });
+  }
+  return sdkPromise;
+}
+
 /** Cache the (supported?) messaging instance so we only probe isSupported once. */
-let messagingPromise: Promise<Messaging | null> | null = null;
-function messagingIfSupported(): Promise<Messaging | null> {
+let messagingPromise: Promise<{ sdk: MessagingSdk; messaging: Messaging } | null> | null = null;
+function messagingIfSupported(): Promise<{ sdk: MessagingSdk; messaging: Messaging } | null> {
   if (!messagingPromise) {
-    messagingPromise = isSupported()
-      .then((ok) => (ok ? getMessaging(app) : null))
-      .catch(() => null);
+    messagingPromise = loadMessagingSdk()
+      .then(async (sdk) => ((await sdk.isSupported()) ? { sdk, messaging: sdk.getMessaging(app) } : null))
+      .catch(() => {
+        messagingPromise = null;
+        return null;
+      });
   }
   return messagingPromise;
 }
@@ -114,8 +124,8 @@ export async function enablePush(): Promise<EnableResult> {
   if (support !== "ok") return { ok: false, reason: support };
   if (!VAPID_KEY) return { ok: false, reason: "missing-vapid" };
 
-  const messaging = await messagingIfSupported();
-  if (!messaging) return { ok: false, reason: "unsupported" };
+  const m = await messagingIfSupported();
+  if (!m) return { ok: false, reason: "unsupported" };
 
   const permission = await Notification.requestPermission();
   if (permission !== "granted") return { ok: false, reason: "denied" };
@@ -123,7 +133,7 @@ export async function enablePush(): Promise<EnableResult> {
   // Reuse the single app service worker (Workbox SW with the FCM handler imported)
   // rather than letting the SDK register its own /firebase-messaging-sw.js.
   const registration = await navigator.serviceWorker.ready;
-  const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
+  const token = await m.sdk.getToken(m.messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
   if (!token) return { ok: false, reason: "no-token" };
 
   await registerPushToken({ token, userAgent: navigator.userAgent });
@@ -135,8 +145,8 @@ export async function enablePush(): Promise<EnableResult> {
 export async function disablePush(): Promise<void> {
   const token = localStorage.getItem(LOCAL_TOKEN_KEY);
   try {
-    const messaging = await messagingIfSupported();
-    if (messaging) await deleteToken(messaging);
+    const m = await messagingIfSupported();
+    if (m) await m.sdk.deleteToken(m.messaging);
   } catch {
     /* token may already be gone — ignore */
   }
@@ -155,7 +165,7 @@ export async function disablePush(): Promise<void> {
  * background is handled by the service worker). Returns an unsubscribe function.
  */
 export async function onForegroundMessage(cb: (payload: MessagePayload) => void): Promise<() => void> {
-  const messaging = await messagingIfSupported();
-  if (!messaging) return () => {};
-  return onMessage(messaging, cb);
+  const m = await messagingIfSupported();
+  if (!m) return () => {};
+  return m.sdk.onMessage(m.messaging, cb);
 }

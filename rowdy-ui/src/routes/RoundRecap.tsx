@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
 import { Trophy } from "lucide-react";
 import { db } from "../firebase";
+import { getDocCacheFirst } from "../utils/firestoreReads";
 import type { RoundRecapDoc, TournamentDoc, VsAllRecord } from "../types";
 import Layout from "../components/Layout";
 import LoadingScreen from "../components/LoadingScreen";
@@ -43,10 +44,16 @@ export default function RoundRecap() {
     setTournamentLoaded(false);
     // Don't clear tournament - let it persist until new one loads
 
+    let cancelled = false;
     const fetchRecap = async () => {
       setError(null);
       try {
-        const recapSnap = await getDoc(doc(db, "roundRecaps", roundId));
+        // Cache-first so a previously viewed recap opens instantly; the server
+        // copy follows in the background in case the recap was regenerated.
+        const recapSnap = await getDocCacheFirst(doc(db, "roundRecaps", roundId), (fresh) => {
+          if (!cancelled && fresh.exists()) setRecap(fresh.data() as RoundRecapDoc);
+        });
+        if (cancelled) return;
         if (!recapSnap.exists()) {
           setError("Recap not found");
           setRecap(null);
@@ -58,11 +65,12 @@ export default function RoundRecap() {
         console.error("Failed to load recap:", err);
         setError("Failed to load recap");
       } finally {
-        setRecapLoaded(true);
+        if (!cancelled) setRecapLoaded(true);
       }
     };
 
     fetchRecap();
+    return () => { cancelled = true; };
   }, [roundId]);
 
   useEffect(() => {
@@ -99,7 +107,7 @@ export default function RoundRecap() {
     let cancelled = false;
     async function fetchTournament() {
       try {
-        const snap = await getDoc(doc(db, "tournaments", tournamentIdSafe));
+        const snap = await getDocCacheFirst(doc(db, "tournaments", tournamentIdSafe));
         if (cancelled) return;
         if (snap.exists()) {
           const tournament = { id: snap.id, ...snap.data() } as TournamentDoc;

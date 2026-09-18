@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { doc, collection, collectionGroup, onSnapshot, query, where, getDocs, type QuerySnapshot } from "firebase/firestore";
+import { doc, collection, collectionGroup, onSnapshot, query, where, type QuerySnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import { getDocsCacheFirst } from "../utils/firestoreReads";
 import type { PlayerStatsBySeries, TournamentSeries } from "../types";
@@ -140,29 +140,37 @@ export function useAllTimeLeaderboard(series: TournamentSeries | undefined, enab
     setLoading(true);
     let cancelled = false;
 
+    // Career stats only change after a match closes: paint from the on-device
+    // cache, then refresh from the server in the background.
+    const apply = (snap: QuerySnapshot) => {
+      if (cancelled) return;
+
+      const nameMap: Record<string, string> = {};
+      const stats: PlayerStatsBySeries[] = [];
+      snap.docs.forEach((d) => {
+        // playerId is the grandparent doc id: playerStats/{playerId}/bySeries/{series}
+        const playerId = d.ref.parent.parent?.id;
+        if (!playerId || playerId.startsWith("_")) return; // skip test accounts
+        const data = d.data();
+        nameMap[playerId] = (data.displayName as string) || playerId;
+        stats.push({ ...data, playerId, series } as PlayerStatsBySeries);
+      });
+
+      // Sort by points descending (small list; client-side keeps it index-free)
+      stats.sort((a, b) => b.points - a.points);
+      setLeaderboard(stats);
+      setNames(nameMap);
+      setLoading(false);
+    };
+
     (async () => {
       try {
-        const snap = await getDocs(
-          query(collectionGroup(db, "bySeries"), where("series", "==", series))
+        apply(
+          await getDocsCacheFirst(
+            query(collectionGroup(db, "bySeries"), where("series", "==", series)),
+            apply
+          )
         );
-        if (cancelled) return;
-
-        const nameMap: Record<string, string> = {};
-        const stats: PlayerStatsBySeries[] = [];
-        snap.docs.forEach((d) => {
-          // playerId is the grandparent doc id: playerStats/{playerId}/bySeries/{series}
-          const playerId = d.ref.parent.parent?.id;
-          if (!playerId || playerId.startsWith("_")) return; // skip test accounts
-          const data = d.data();
-          nameMap[playerId] = (data.displayName as string) || playerId;
-          stats.push({ ...data, playerId, series } as PlayerStatsBySeries);
-        });
-
-        // Sort by points descending (small list; client-side keeps it index-free)
-        stats.sort((a, b) => b.points - a.points);
-        setLeaderboard(stats);
-        setNames(nameMap);
-        setLoading(false);
       } catch (err) {
         console.error("Error fetching all-time leaderboard:", err);
         if (!cancelled) {

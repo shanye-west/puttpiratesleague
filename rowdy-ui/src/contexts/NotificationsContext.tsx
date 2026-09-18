@@ -25,6 +25,7 @@ import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
 import { onForegroundMessage } from "../messaging";
+import { usePushOn } from "../hooks/usePushNotifications";
 import type { NotificationDoc } from "../types";
 
 const HISTORY_LIMIT = 30;
@@ -48,6 +49,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { player } = useAuth();
   const { showToast } = useToast();
   const [notifications, setNotifications] = useState<NotificationDoc[]>([]);
+  const pushOn = usePushOn();
 
   // Live history for the current player (most recent first).
   useEffect(() => {
@@ -71,7 +73,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [player]);
 
   // Foreground push → toast. Background delivery is the service worker's job.
+  // Only when push is on for this device: without a token nothing is delivered,
+  // and skipping it keeps the FCM SDK from loading at startup for everyone else.
   useEffect(() => {
+    if (!pushOn) return;
     let active = true;
     let cleanup = () => {};
     onForegroundMessage((payload) => {
@@ -88,7 +93,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       active = false;
       cleanup();
     };
-  }, [showToast]);
+  }, [showToast, pushOn]);
 
   const value = useMemo<NotificationsValue>(() => {
     const unread = notifications.filter((n) => !n.read);

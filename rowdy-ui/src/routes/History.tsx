@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
-import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
+import { collection, query, where, orderBy, limit, type QuerySnapshot } from "firebase/firestore";
 import { db } from "../firebase";
+import { getDocsCacheFirst } from "../utils/firestoreReads";
 import { ViewTransitionLink } from "../components/ViewTransitionLink";
 import LoadingScreen from "../components/LoadingScreen";
 import Layout from "../components/Layout";
@@ -35,22 +36,27 @@ export default function History() {
 
     async function fetchHistory() {
       try {
-        const snap = await getDocs(
+        // Past seasons rarely change: paint from the on-device cache, then
+        // refresh from the server in the background (a season just archived).
+        const apply = (snap: QuerySnapshot) => {
+          if (cancelled) return;
+          const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as TournamentDoc));
+          // Filter out test tournaments (they should not appear in History)
+          const publicTournaments = docs.filter(t => t.test !== true);
+          // Already sorted by query orderBy
+          setTournaments(publicTournaments);
+          setLoadError(false);
+        };
+        const snap = await getDocsCacheFirst(
           query(
             collection(db, "tournaments"),
             where("active", "==", false),
             orderBy("year", "desc"),
             limit(20)
-          )
+          ),
+          apply
         );
-        if (cancelled) return;
-        
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as TournamentDoc));
-        // Filter out test tournaments (they should not appear in History)
-        const publicTournaments = docs.filter(t => t.test !== true);
-        // Already sorted by query orderBy
-        setTournaments(publicTournaments);
-        setLoadError(false);
+        apply(snap);
       } catch (err) {
         console.error("History fetch error:", err);
         if (!cancelled) setLoadError(true);
@@ -86,7 +92,7 @@ export default function History() {
         const fallbackRounds: { roundId: string; tournamentId: string; pointsValue: number }[] = [];
 
         await Promise.all(batches.map(async (batch) => {
-          const snap = await getDocs(
+          const snap = await getDocsCacheFirst(
             query(collection(db, "rounds"), where("tournamentId", "in", batch))
           );
           snap.docs.forEach(d => {
@@ -111,7 +117,7 @@ export default function History() {
           for (let i = 0; i < fallbackIds.length; i += 30) matchBatches.push(fallbackIds.slice(i, i + 30));
 
           await Promise.all(matchBatches.map(async (batch) => {
-            const snap = await getDocs(
+            const snap = await getDocsCacheFirst(
               query(collection(db, "matches"), where("roundId", "in", batch))
             );
             snap.docs.forEach(d => {

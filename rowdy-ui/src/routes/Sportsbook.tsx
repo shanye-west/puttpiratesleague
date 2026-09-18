@@ -15,7 +15,7 @@ import PlayerAvatar from "../components/PlayerAvatar";
 import { useAuth } from "../contexts/AuthContext";
 import { useTournamentContext } from "../contexts/TournamentContext";
 import { useToast } from "../contexts/ToastContext";
-import { useTournamentData } from "../hooks/useTournamentData";
+import { useSeasonData } from "../contexts/SeasonDataContext";
 import {
   useBets,
   useBetSettlements,
@@ -64,12 +64,9 @@ export default function Sportsbook() {
   const { player } = useAuth();
   const { tournament } = useTournamentContext();
   const { showToast } = useToast();
-  // Needs per-match data for bet gating (so no denormalized-totals fast path),
-  // but locked rounds are static — only unlocked rounds keep a live listener.
-  const { matchesByRound, rounds, loading: tdLoading } = useTournamentData({
-    prefetchedTournament: tournament,
-    splitLockedRounds: true,
-  });
+  // Needs per-match data for bet gating (so no denormalized-totals fast path).
+  // Shared with the other season screens, so opening the tab doesn't reload it.
+  const { matchesByRound, rounds, loading: tdLoading } = useSeasonData(tournament);
   const { bets, loading: betsLoading } = useBets(tournament?.id);
   // League season (Putt Pirates): no Cup futures / session markets, and the
   // season-long player props stay open while the player has matches left.
