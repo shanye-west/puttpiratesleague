@@ -11,8 +11,8 @@ export interface BetEventRowProps {
   /** Row title — a string, or a node (e.g. a two-line stacked matchup). */
   label: ReactNode;
   subtitle?: string;
-  /** Team colors for the small split accent bar on the left. */
-  accent?: { teamA: string; teamB: string };
+  /** Colors for the small split accent bar on the left — two team colors, or a list (e.g. every league team). */
+  accent?: { teamA: string; teamB: string } | string[];
   /**
    * How many open offers sit on this event. Renders a chip only when there are
    * any — a row with nothing waiting says nothing, since the chevron already
@@ -31,8 +31,9 @@ function BetEventRow({ label, subtitle, accent, openCount = 0, onClick }: BetEve
     >
       {accent && (
         <span className="flex h-9 w-1.5 shrink-0 flex-col overflow-hidden rounded-full">
-          <span className="flex-1" style={{ backgroundColor: accent.teamA }} />
-          <span className="flex-1" style={{ backgroundColor: accent.teamB }} />
+          {(Array.isArray(accent) ? accent : [accent.teamA, accent.teamB]).map((c, i) => (
+            <span key={i} className="flex-1" style={{ backgroundColor: c }} />
+          ))}
         </span>
       )}
       <div className="min-w-0 flex-1 leading-snug">

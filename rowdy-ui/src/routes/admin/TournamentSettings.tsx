@@ -15,6 +15,7 @@ import { adminApi } from "../../api/admin";
 import { betsApi } from "../../api/bets";
 import { getErrorMessage } from "../../api/errors";
 import { cn } from "../../lib/utils";
+import { isLeagueTournament } from "../../utils/leagueTeams";
 import type { PlayerDoc } from "../../types";
 import type { TournamentUpdates } from "../../api/adminContracts";
 
@@ -45,6 +46,7 @@ export default function TournamentSettings() {
   const [cupWinner, setCupWinner] = useState<"" | "teamA" | "teamB" | "push">("");
   const [confirmCup, setConfirmCup] = useState(false);
   const [confirmPlayerFutures, setConfirmPlayerFutures] = useState(false);
+  const [confirmLeague, setConfirmLeague] = useState(false);
   const [settling, setSettling] = useState(false);
 
   useEffect(() => {
@@ -124,6 +126,26 @@ export default function TournamentSettings() {
       setSuccess(`Settled ${res.settledCount} player-prop bet${res.settledCount === 1 ? "" : "s"}.`);
     } catch (err) {
       setError(getErrorMessage(err, "Couldn't settle player futures"));
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  const handleSettleLeagueBets = async () => {
+    setConfirmLeague(false);
+    setError(null);
+    setSuccess(null);
+    setSettling(true);
+    try {
+      const res = await betsApi.settleLeagueBets({ tournamentId });
+      const parts = [`Settled ${res.settledCount} league bet${res.settledCount === 1 ? "" : "s"}.`];
+      if (res.pendingMonths.length > 0) {
+        parts.push(`Team battles still waiting on: ${res.pendingMonths.join(", ")}.`);
+      }
+      if (!res.seasonComplete) parts.push("Season bets wait until every match is closed.");
+      setSuccess(parts.join(" "));
+    } catch (err) {
+      setError(getErrorMessage(err, "Couldn't settle league bets"));
     } finally {
       setSettling(false);
     }
@@ -215,41 +237,54 @@ export default function TournamentSettings() {
             </AdminSection>
           )}
 
-          <AdminSection
-            title="Settle Cup-winner futures"
-            description="Resolves active bets on who wins the Cup. These never settle automatically — pick the winner once the Cup is decided. A tie refunds every bet."
-          >
-            <div className="space-y-3">
-              <Field label="Cup winner">
-                <select
-                  value={cupWinner}
-                  onChange={(e) => setCupWinner(e.target.value as "" | "teamA" | "teamB" | "push")}
-                  className={inputClass}
-                >
-                  <option value="">Select the Cup winner…</option>
-                  <option value="teamA">{teamAName} won the Cup</option>
-                  <option value="teamB">{teamBName} won the Cup</option>
-                  <option value="push">Tie — refund all Cup bets</option>
-                </select>
-              </Field>
-              <Button
-                type="button"
-                onClick={() => setConfirmCup(true)}
-                disabled={settling || cupWinner === ""}
-              >
-                {settling ? "Settling…" : "Settle Cup futures"}
+          {isLeagueTournament(tournament) ? (
+            <AdminSection
+              title="Settle league bets"
+              description="Match bets settle automatically, and so do team battles and season bets when the match that finishes their month or the season closes. Use this to catch up afterwards: for example, after you set a tied month's bonus team, or fix a result. It settles team battles for finished months. Once every match is closed, it also settles playoff and final-points bets from the standings. Safe to run any time."
+            >
+              <Button type="button" onClick={() => setConfirmLeague(true)} disabled={settling}>
+                {settling ? "Settling…" : "Settle league bets"}
               </Button>
-            </div>
-          </AdminSection>
+            </AdminSection>
+          ) : (
+            <>
+            <AdminSection
+              title="Settle Cup-winner futures"
+              description="Resolves active bets on who wins the Cup. These never settle automatically — pick the winner once the Cup is decided. A tie refunds every bet."
+            >
+              <div className="space-y-3">
+                <Field label="Cup winner">
+                  <select
+                    value={cupWinner}
+                    onChange={(e) => setCupWinner(e.target.value as "" | "teamA" | "teamB" | "push")}
+                    className={inputClass}
+                  >
+                    <option value="">Select the Cup winner…</option>
+                    <option value="teamA">{teamAName} won the Cup</option>
+                    <option value="teamB">{teamBName} won the Cup</option>
+                    <option value="push">Tie — refund all Cup bets</option>
+                  </select>
+                </Field>
+                <Button
+                  type="button"
+                  onClick={() => setConfirmCup(true)}
+                  disabled={settling || cupWinner === ""}
+                >
+                  {settling ? "Settling…" : "Settle Cup futures"}
+                </Button>
+              </div>
+            </AdminSection>
 
-          <AdminSection
-            title="Settle player futures"
-            description="Resolves active player matchups and tournament-points over/unders from each player's total points. Run once every match is closed. Match and round bets settle automatically; Cup-winner bets need the control above."
-          >
-            <Button type="button" onClick={() => setConfirmPlayerFutures(true)} disabled={settling}>
-              {settling ? "Settling…" : "Settle player futures"}
-            </Button>
-          </AdminSection>
+            <AdminSection
+              title="Settle player futures"
+              description="Resolves active player matchups and tournament-points over/unders from each player's total points. Run once every match is closed. Match and round bets settle automatically; Cup-winner bets need the control above."
+            >
+              <Button type="button" onClick={() => setConfirmPlayerFutures(true)} disabled={settling}>
+                {settling ? "Settling…" : "Settle player futures"}
+              </Button>
+            </AdminSection>
+            </>
+          )}
         </>
       )}
 
@@ -315,6 +350,19 @@ export default function TournamentSettings() {
       >
         Settles every active player-prop bet (matchups + player point over/unders) from final
         tournament points. Make sure every match is closed first — this can't be undone.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        isOpen={confirmLeague}
+        title="Settle league bets?"
+        confirmLabel="Settle"
+        danger
+        busy={settling}
+        onConfirm={handleSettleLeagueBets}
+        onCancel={() => setConfirmLeague(false)}
+      >
+        Pays out every league bet whose result is final, using the current standings. Bets that
+        aren&apos;t decided yet are left alone. Payouts can&apos;t be undone.
       </ConfirmDialog>
     </AdminPage>
   );

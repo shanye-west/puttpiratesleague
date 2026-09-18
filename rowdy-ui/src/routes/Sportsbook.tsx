@@ -32,6 +32,8 @@ import ConfirmDialog from "../components/admin/ConfirmDialog";
 import BetMatchup, { type MatchupSide } from "../components/BetMatchup";
 import SportsbookHowTo from "../components/SportsbookHowTo";
 import CaptainsBetSheet from "../components/CaptainsBetSheet";
+import LeagueBetSheet, { type LeagueBetMode, type SeasonPlayer } from "../components/LeagueBetSheet";
+import { computeLeagueStandings } from "../utils/leagueStandings";
 import { isLeagueTournament, leagueTeamColor, teamOfPlayer } from "../utils/leagueTeams";
 import { useCaptainsMatch } from "../hooks/useCaptainsMatch";
 import type { BetDoc, BetOverUnderMetric, BetSide, MatchDoc, PlayerDoc, RoundDoc } from "../types";
@@ -59,6 +61,9 @@ const isCaptainsOuMetric = (m?: BetOverUnderMetric): boolean =>
 /** Every market that belongs to the captains' match. */
 const isCaptainsBet = (b: BetDoc): boolean =>
   b.market === "captainsMatch" || b.market === "captainsRound" || isCaptainsOuMetric(b.metric);
+/** Season-long player markets: Cup matchups, player O/Us, league playoffs. */
+const isSeasonPropBet = (b: BetDoc): boolean =>
+  b.market === "playerMatchup" || b.market === "playoffs" || (b.market === "overUnder" && isPlayerOuMetric(b.metric));
 
 export default function Sportsbook() {
   const { player } = useAuth();
@@ -123,6 +128,8 @@ export default function Sportsbook() {
   const [selectedEvent, setSelectedEvent] = useState<BetEvent | null>(null);
   // The tournament-long player-props sheet (matchups + player point O/Us).
   const [propSheetOpen, setPropSheetOpen] = useState(false);
+  // League: the season-bets sheet or one month's team-battle sheet (null = closed).
+  const [leagueSheet, setLeagueSheet] = useState<LeagueBetMode | null>(null);
   // The captains'-match sheet (outright / round / clinch O/U / rounds-won O/U).
   const [captainsSheetOpen, setCaptainsSheetOpen] = useState(false);
   // The "How it works" guide (betting mechanics + the list of markets).
@@ -181,18 +188,6 @@ export default function Sportsbook() {
     () => allMatches.some((m) => (m.status?.thru ?? 0) > 0 || m.status?.closed === true),
     [allMatches]
   );
-  /** League: a player prop is open while its subject still has an unclosed match. */
-  const subjectHasOpenMatch = useCallback(
-    (pid: string | undefined): boolean =>
-      !!pid &&
-      allMatches.some(
-        (m) =>
-          m.status?.closed !== true &&
-          [...(m.teamAPlayers ?? []), ...(m.teamBPlayers ?? [])].some((p) => p.playerId === pid)
-      ),
-    [allMatches]
-  );
-
   /** Mirror of the backend's matchStartedPlay: scored, closed, locked, or teed off. */
   const matchHasStarted = useCallback((m: MatchDoc | undefined): boolean => {
     if (!m) return true; // unknown match -> treat as locked, hide cancel
@@ -201,6 +196,20 @@ export default function Sportsbook() {
     const teeMs = teeTimeToMillis(m.teeTime);
     return teeMs !== null && teeMs <= nowMs;
   }, [nowMs]);
+  /**
+   * League: a player's season bets stay open until their last match starts
+   * (mirrors the backend's isPlayerPropClosed).
+   */
+  const subjectHasUnstartedMatch = useCallback(
+    (pid: string | undefined): boolean =>
+      !!pid &&
+      allMatches.some(
+        (m) =>
+          !matchHasStarted(m) &&
+          [...(m.teamAPlayers ?? []), ...(m.teamBPlayers ?? [])].some((p) => p.playerId === pid)
+      ),
+    [allMatches, matchHasStarted]
+  );
   /** A locked-in bet can still be called off until its market starts. */
   const canCancelLocked = (b: BetDoc): boolean => {
     // Captains' markets mirror the server predicate: the book has to be open,
@@ -216,10 +225,11 @@ export default function Sportsbook() {
     // Tournament-long futures (Cup, player matchups, player point O/Us) stay
     // callable until any match starts.
     if (b.market === "cupFuture" || b.market === "playerMatchup") return !tournamentStarted;
-    if (b.market === "overUnder" && isPlayerOuMetric(b.metric)) {
-      return isLeague ? subjectHasOpenMatch(b.subjectId) : !tournamentStarted;
-    }
-    if (b.market === "round") {
+    // League season bets move with every result during their window, so once
+    // locked they stand (mirrors betsOps cancelBet).
+    if (b.market === "playoffs") return false;
+    if (b.market === "overUnder" && isPlayerOuMetric(b.metric)) return isLeague ? false : !tournamentStarted;
+    if (b.market === "round" || b.market === "teamMonth") {
       const ms = b.roundId ? (matchesByRound[b.roundId] ?? []) : [];
       return ms.length > 0 && ms.every((m) => !matchHasStarted(m));
     }
@@ -262,9 +272,18 @@ export default function Sportsbook() {
   }, [captainsSummary]);
   const captainsBettingOpen = captainsMatch?.bettingOpen === true;
 
+  // League teams, for team battles.
+  const leagueTeams = useMemo(() => tournament?.leagueTeams ?? [], [tournament?.leagueTeams]);
+  const leagueTeamName = (id?: string): string => leagueTeams.find((t) => t.id === id)?.name || "Team";
+  const leagueTeamColorOf = (id?: string): string =>
+    leagueTeamColor(leagueTeams.find((t) => t.id === id) ?? null, leagueTeams);
+
   /** Labels for a team bet's two sides — player names for matches, team names otherwise. */
   const sideLabelsForBet = (b: BetDoc): { teamA: string; teamB: string } => {
     if (b.market === "captainsMatch" || b.market === "captainsRound") return captainsNames;
+    if (b.market === "teamMonth") {
+      return { teamA: leagueTeamName(b.leagueTeamAId), teamB: leagueTeamName(b.leagueTeamBId) };
+    }
     if (b.market === "cupFuture" || b.market === "round") return teamNames;
     if (b.market === "playerMatchup") {
       return { teamA: playerName(b.subjectAId), teamB: playerName(b.subjectBId) };
@@ -361,13 +380,8 @@ export default function Sportsbook() {
   const inPlaySessions = useMemo(() => activeBets.filter((b) => b.market === "round"), [activeBets]);
   const inPlayCup = useMemo(() => activeBets.filter((b) => b.market === "cupFuture"), [activeBets]);
   const inPlayCaptains = useMemo(() => activeBets.filter(isCaptainsBet), [activeBets]);
-  const inPlayProps = useMemo(
-    () =>
-      activeBets.filter(
-        (b) => b.market === "playerMatchup" || (b.market === "overUnder" && isPlayerOuMetric(b.metric))
-      ),
-    [activeBets]
-  );
+  const inPlayProps = useMemo(() => activeBets.filter(isSeasonPropBet), [activeBets]);
+  const inPlayTeamBattles = useMemo(() => activeBets.filter((b) => b.market === "teamMonth"), [activeBets]);
 
   // Bettable events for the Open Bets list. A round/match is bettable until it
   // tees off; the Cup until the tournament starts. These do depend on the clock
@@ -394,7 +408,12 @@ export default function Sportsbook() {
   const matchMonths = useMemo(
     () =>
       rounds
-        .map((r) => ({ round: r, matches: (matchesByRound[r.id] ?? []).filter((m) => !matchHasStarted(m)) }))
+        .map((r) => {
+          const all = matchesByRound[r.id] ?? [];
+          const matches = all.filter((m) => !matchHasStarted(m));
+          // A month's team battle is open until its first match starts.
+          return { round: r, matches, teamBattleOpen: matches.length === all.length };
+        })
         .filter((g) => g.matches.length > 0),
     [rounds, matchesByRound, matchHasStarted]
   );
@@ -414,6 +433,15 @@ export default function Sportsbook() {
     );
 
   const ledger = useMemo(() => computeLedger(bets), [bets]);
+  // League standings — the season bets show where each player stands and
+  // settle on these same numbers server-side.
+  const leagueStandings = useMemo(
+    () =>
+      isLeague
+        ? computeLeagueStandings({ rounds, matchesByRound, leagueTeams, prior: tournament?.priorStandings ?? null })
+        : null,
+    [isLeague, rounds, matchesByRound, leagueTeams, tournament?.priorStandings]
+  );
   const h2h = useMemo(() => headToHead(bets, settlements, player?.id), [bets, settlements, player?.id]);
   const pendingSettlements = useMemo(
     () => selectPendingSettlements(settlements, player?.id),
@@ -472,9 +500,32 @@ export default function Sportsbook() {
   /** How many open offers sit on an event — drives the row's "N open" chip. */
   const cupOfferCount = openOffers.filter((b) => b.market === "cupFuture").length;
   const captainsOffers = openOffers.filter(isCaptainsBet);
-  const playerPropOffers = openOffers.filter(
-    (b) => b.market === "playerMatchup" || (b.market === "overUnder" && isPlayerOuMetric(b.metric))
-  );
+  const playerPropOffers = openOffers.filter(isSeasonPropBet);
+  const teamBattleOffers = (roundId: string) =>
+    openOffers.filter((b) => b.market === "teamMonth" && b.roundId === roundId);
+  /** Each league player's standing + what's left, for the season-bets sheet. */
+  const seasonPlayers: SeasonPlayer[] = (leagueStandings?.individual ?? []).map((row) => ({
+    id: row.playerId,
+    name: playerName(row.playerId),
+    points: row.points,
+    remaining: allMatches.filter(
+      (m) =>
+        m.status?.closed !== true &&
+        [...(m.teamAPlayers ?? []), ...(m.teamBPlayers ?? [])].some((p) => p.playerId === row.playerId)
+    ).length,
+    rank: row.rank,
+    inCut: row.inPlayoffCut,
+    open: subjectHasUnstartedMatch(row.playerId),
+  }));
+  // League season offers still takeable: the subject's last match hasn't
+  // started and (final points) the line isn't already decided.
+  const seasonPlayersById = Object.fromEntries(seasonPlayers.map((p) => [p.id, p]));
+  const seasonOffers = playerPropOffers.filter((b) => {
+    const sp = seasonPlayersById[b.subjectId ?? ""];
+    if (b.market === "playerMatchup" || !sp?.open) return false;
+    if (b.market !== "overUnder" || typeof b.line !== "number") return true;
+    return b.line > sp.points && b.line < sp.points + sp.remaining;
+  });
   const roundOfferCount = (roundId: string) =>
     openOffers.filter((b) => b.market === "round" && b.roundId === roundId).length;
   const matchOfferCount = (matchId: string) => openOffers.filter((b) => b.matchId === matchId).length;
@@ -490,7 +541,7 @@ export default function Sportsbook() {
   const matchAccent = (m: MatchDoc): { teamA: string; teamB: string } => {
     if (!isLeague) return teamColors;
     const colorOf = (pid: string | undefined) =>
-      leagueTeamColor(pid ? teamOfPlayer(tournament.leagueTeams, pid) : null, tournament.leagueTeams);
+      leagueTeamColor(pid ? teamOfPlayer(leagueTeams, pid) : null, leagueTeams);
     return { teamA: colorOf(m.teamAPlayers?.[0]?.playerId), teamB: colorOf(m.teamBPlayers?.[0]?.playerId) };
   };
 
@@ -522,6 +573,13 @@ export default function Sportsbook() {
       content: contentOn(key),
     });
 
+    if (b.market === "playoffs") {
+      const who = lastName(playerName(b.subjectId));
+      return {
+        teamA: tile("no", `${who} misses playoffs`, UNDER_COLOR),
+        teamB: tile("yes", `${who} makes playoffs`, OVER_COLOR),
+      };
+    }
     if (b.market === "overUnder") {
       const line = b.line ?? 0;
       // Player props carry the player's name + a unit ("pts"/"wins"); match-scoped
@@ -548,7 +606,9 @@ export default function Sportsbook() {
     const colors =
       b.market === "playerMatchup"
         ? { teamA: SUBJECT_A_COLOR, teamB: SUBJECT_B_COLOR }
-        : isCaptainsBet(b)
+        : b.market === "teamMonth"
+          ? { teamA: leagueTeamColorOf(b.leagueTeamAId), teamB: leagueTeamColorOf(b.leagueTeamBId) }
+          : isCaptainsBet(b)
           ? { teamA: captainsColors.teamA, teamB: captainsColors.teamB }
           : { teamA: teamColors.teamA, teamB: teamColors.teamB };
     return {
@@ -556,6 +616,10 @@ export default function Sportsbook() {
       teamB: tile("teamB", labels.teamB, colors.teamB),
     };
   };
+
+  /** When a locked-in bet stops being cancellable, in words ("… until <this>"). */
+  const cancelUntil = (b: BetDoc): string =>
+    b.market === "teamMonth" ? "the month's first match starts" : "the match starts";
 
   const opponentName = (b: BetDoc): string =>
     playerName(player && b.proposerId === player.id ? b.acceptorId : b.proposerId);
@@ -566,6 +630,11 @@ export default function Sportsbook() {
    * Returns `{}` for Cup futures or matches we haven't loaded yet.
    */
   const matchTrack = (b: BetDoc): { to?: string; status?: ReactNode } => {
+    // A team battle has no single match to follow — name its month instead.
+    if (b.market === "teamMonth") {
+      const r = b.roundId ? roundsById[b.roundId] : undefined;
+      return { status: <span className="text-muted-foreground">{r?.name || "Month"} team battle · bonus point counts</span> };
+    }
     if (b.market !== "match" || !b.matchId) return {};
     const m = matchesById[b.matchId];
     if (!m) return {};
@@ -692,7 +761,7 @@ export default function Sportsbook() {
                 {/* Cup + Player Props are both tournament-long markets and both are
                     single rows — one "Futures" card rather than a section apiece. */}
                 {showCup && (isLeague || !tournamentStarted) && (
-                  <BetGroup title={isLeague ? "Season props" : "Futures"} count={isLeague ? 1 : 2}>
+                  <BetGroup title={isLeague ? "Season" : "Futures"} count={isLeague ? 1 : 2}>
                     <Card className="overflow-hidden">
                       <ul className="divide-y divide-border/60">
                         {!isLeague && (
@@ -707,13 +776,23 @@ export default function Sportsbook() {
                         </li>
                         )}
                         <li>
-                          <BetEventRow
-                            label={<span className="block truncate">Player Props</span>}
-                            subtitle={isLeague ? "Season points & wins O/U" : "Matchups · points & wins O/U"}
-                            accent={{ teamA: SUBJECT_A_COLOR, teamB: SUBJECT_B_COLOR }}
-                            openCount={playerPropOffers.length}
-                            onClick={() => setPropSheetOpen(true)}
-                          />
+                          {isLeague ? (
+                            <BetEventRow
+                              label={<span className="block truncate">Season bets</span>}
+                              subtitle="Makes the playoffs · final points O/U"
+                              accent={{ teamA: OVER_COLOR, teamB: UNDER_COLOR }}
+                              openCount={seasonOffers.length}
+                              onClick={() => setLeagueSheet({ kind: "season" })}
+                            />
+                          ) : (
+                            <BetEventRow
+                              label={<span className="block truncate">Player Props</span>}
+                              subtitle="Matchups · points & wins O/U"
+                              accent={{ teamA: SUBJECT_A_COLOR, teamB: SUBJECT_B_COLOR }}
+                              openCount={playerPropOffers.length}
+                              onClick={() => setPropSheetOpen(true)}
+                            />
+                          )}
                         </li>
                       </ul>
                     </Card>
@@ -771,11 +850,30 @@ export default function Sportsbook() {
                         months={matchMonths.map((g) => ({
                           id: g.round.id,
                           label: shortRoundLabel(g.round),
-                          offers: g.matches.reduce((n, m) => n + matchOfferCount(m.id), 0),
+                          offers:
+                            g.matches.reduce((n, m) => n + matchOfferCount(m.id), 0) +
+                            (isLeague && g.teamBattleOpen ? teamBattleOffers(g.round.id).length : 0),
                         }))}
                         selectedId={selectedMonth.round.id}
                         onSelect={setMonth}
                       />
+                    )}
+                    {isLeague && selectedMonth.teamBattleOpen && (
+                      <Card className="overflow-hidden">
+                        <BetEventRow
+                          label={<span className="block truncate">Team battle</span>}
+                          subtitle={`Which team scores more in ${selectedMonth.round.name || "this month"}?`}
+                          accent={leagueTeams.map((t) => leagueTeamColorOf(t.id))}
+                          openCount={teamBattleOffers(selectedMonth.round.id).length}
+                          onClick={() =>
+                            setLeagueSheet({
+                              kind: "teamMonth",
+                              roundId: selectedMonth.round.id,
+                              monthName: selectedMonth.round.name || "This month",
+                            })
+                          }
+                        />
+                      </Card>
                     )}
                     <Card className="overflow-hidden">
                       <ul className="divide-y divide-border/60">
@@ -879,10 +977,11 @@ export default function Sportsbook() {
                   Every locked-in bet across the field — see who's backing whom. Tap a match to follow it live.
                 </p>
                 {renderInPlayGroup("Matches", inPlayMatches)}
+                {renderInPlayGroup("Team battles", inPlayTeamBattles)}
                 {renderInPlayGroup("Sessions", inPlaySessions)}
                 {renderInPlayGroup("Captains' Match", inPlayCaptains)}
                 {renderInPlayGroup("Cup", inPlayCup)}
-                {renderInPlayGroup("Player Props", inPlayProps)}
+                {renderInPlayGroup(isLeague ? "Season bets" : "Player Props", inPlayProps)}
               </>
             )}
           </div>
@@ -1099,9 +1198,7 @@ export default function Sportsbook() {
                         <span className="flex min-w-0 flex-col items-start gap-0.5">
                           <StatusPill tone="emerald">Locked in</StatusPill>
                           {cancellable && (
-                            <span className="text-xs text-muted-foreground">
-                              Either player can cancel until the match starts.
-                            </span>
+                            <span className="text-xs text-muted-foreground">Either player can cancel until {cancelUntil(b)}.</span>
                           )}
                         </span>
                         {cancellable && (
@@ -1112,7 +1209,7 @@ export default function Sportsbook() {
                             onClick={() =>
                               confirmThen({
                                 title: "Cancel this bet?",
-                                body: `This calls off your locked-in $${b.amount} bet with ${opponentName(b)}. Neither of you wins or loses. This can't be undone once the match starts.`,
+                                body: `This calls off your locked-in $${b.amount} bet with ${opponentName(b)}. Neither of you wins or loses. You can only cancel until ${cancelUntil(b)}.`,
                                 confirmLabel: "Cancel bet",
                                 run: () => betsApi.cancelBet({ betId: b.id }),
                                 success: "Bet cancelled.",
@@ -1179,6 +1276,7 @@ export default function Sportsbook() {
         isOpen={howToOpen}
         onClose={() => setHowToOpen(false)}
         hasCaptainsMatch={!!captainsMatch}
+        isLeague={isLeague}
       />
 
       {confirmState && (
@@ -1248,6 +1346,25 @@ export default function Sportsbook() {
           loggedIn={!!player}
           meId={player?.id}
           rosterOptions={propSubjectOptions}
+          bettorName={playerName}
+          onTake={(b) => runAction(() => betsApi.acceptBet({ betId: b.id }), "Bet taken and locked in!")}
+        />
+      )}
+
+      {/* League: season bets (playoffs + final points) or one month's team battle. */}
+      {leagueSheet && leagueStandings && (
+        <LeagueBetSheet
+          key={leagueSheet.kind === "season" ? "season" : `tm-${leagueSheet.roundId}`}
+          isOpen
+          onClose={() => setLeagueSheet(null)}
+          tournamentId={tournament.id}
+          mode={leagueSheet}
+          players={seasonPlayers}
+          teams={leagueTeams.map((t) => ({ id: t.id, name: t.name, color: leagueTeamColorOf(t.id) }))}
+          openOffers={leagueSheet.kind === "season" ? seasonOffers : teamBattleOffers(leagueSheet.roundId)}
+          loggedIn={!!player}
+          meId={player?.id}
+          rosterOptions={rosterOptions}
           bettorName={playerName}
           onTake={(b) => runAction(() => betsApi.acceptBet({ betId: b.id }), "Bet taken and locked in!")}
         />

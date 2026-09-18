@@ -21,9 +21,11 @@ import {
   settleRoundBet,
 } from "../scoring/betSettlement.js";
 import { summarizeCaptainsSeason } from "../helpers/captainsMatch.js";
+import { computeLeagueStandings, type LeagueStandings, type MatchDoc, type RoundDoc } from "../helpers/leagueStandings.js";
+import { isLivePointLine, isMonthFinal, leagueBetResult, playerSeasonState } from "../helpers/leagueBets.js";
 import { notify } from "../messaging/notify.js";
 import { teeTimeToMillis } from "./teeTime.js";
-import type { BetDoc, BetMarket, BetOverUnderMetric, BetSide } from "../types.js";
+import type { BetDoc, BetMarket, BetOverUnderMetric, BetSide, LeagueTeam, PriorStandings } from "../types.js";
 
 function db() {
   return getFirestore();
@@ -51,6 +53,10 @@ function isOverUnderSide(v: unknown): v is "over" | "under" {
   return v === "over" || v === "under";
 }
 
+function isYesNoSide(v: unknown): v is "yes" | "no" {
+  return v === "yes" || v === "no";
+}
+
 function isMarket(v: unknown): v is BetMarket {
   return (
     v === "match" ||
@@ -59,7 +65,9 @@ function isMarket(v: unknown): v is BetMarket {
     v === "overUnder" ||
     v === "playerMatchup" ||
     v === "captainsMatch" ||
-    v === "captainsRound"
+    v === "captainsRound" ||
+    v === "playoffs" ||
+    v === "teamMonth"
   );
 }
 
@@ -100,6 +108,10 @@ function oppositeSide(side: BetSide): BetSide {
       return "under";
     case "under":
       return "over";
+    case "yes":
+      return "no";
+    case "no":
+      return "yes";
   }
 }
 
@@ -142,10 +154,11 @@ async function isTournamentStarted(tournamentId: string): Promise<boolean> {
 }
 
 /**
- * League player props (points / wins over a season) stay open as long as the
- * subject still has an unplayed match — the season is months long and a
- * "tournament started" gate would shut the market on day one. Closed once every
- * match the player is in has closed (or none exist).
+ * Season-long player props (points / wins O/U, league playoffs) stay open as
+ * long as the subject still has a match to start — the season is months long
+ * and a "tournament started" gate would shut the market on day one. Closed once
+ * the player's last match has started (or they have none), so nobody can bet on
+ * a player mid-way through their final match.
  */
 async function isPlayerPropClosed(tournamentId: string, subjectId: string | undefined): Promise<boolean> {
   if (!subjectId) return true;
@@ -153,10 +166,10 @@ async function isPlayerPropClosed(tournamentId: string, subjectId: string | unde
     .collection("matches")
     .where("tournamentId", "==", tournamentId)
     .where("playerIds", "array-contains", subjectId)
-    .select("status")
+    .select(...STARTED_FIELDS)
     .get();
   if (snap.empty) return true;
-  return snap.docs.every((d) => d.data().status?.closed === true);
+  return snap.docs.every((d) => matchStartedPlay(d.data()));
 }
 
 /** True once any match in a round has begun — used to lock round/session betting. */
@@ -223,7 +236,9 @@ async function marketClosed(
   bet: Pick<BetDoc, "market" | "matchId" | "roundId" | "tournamentId" | "metric" | "captainsRoundNumber" | "subjectId">
 ): Promise<boolean> {
   if (bet.market === "match") return isMatchClosed(bet.matchId);
-  if (bet.market === "round") return bet.roundId ? isRoundStarted(bet.roundId) : true;
+  // A league month's team battle closes with the month's first match, like a round.
+  if (bet.market === "round" || bet.market === "teamMonth") return bet.roundId ? isRoundStarted(bet.roundId) : true;
+  if (bet.market === "playoffs") return isPlayerPropClosed(bet.tournamentId, bet.subjectId);
   if (isCaptainsMarket(bet.market, bet.metric)) return isCaptainsMarketClosed(bet);
   if (bet.market === "overUnder") {
     // Match-scoped over/unders close with their match; player-points props are
@@ -235,13 +250,95 @@ async function marketClosed(
   return isTournamentStarted(bet.tournamentId);
 }
 
+/**
+ * League season bets (playoffs, final points/wins O/U) move with every result
+ * during their long betting window, so once locked in they stand — unlike match
+ * bets and team battles, nothing is decided before those can no longer be
+ * cancelled.
+ */
+function isLeagueSeasonProp(bet: Pick<BetDoc, "market" | "metric">, isLeague: boolean): boolean {
+  if (bet.market === "playoffs") return true;
+  return (
+    isLeague &&
+    bet.market === "overUnder" &&
+    (bet.metric === "playerTournamentPoints" || bet.metric === "playerTournamentWins")
+  );
+}
+
+/**
+ * League final points/wins O/U: whether the bet's line is already decided (the
+ * player has passed it, or can no longer reach it). Checked when an offer is
+ * taken, so a stale offer can't hand the taker a sure thing.
+ */
+async function leagueLineDecided(bet: BetDoc): Promise<boolean> {
+  if (bet.market !== "overUnder" || typeof bet.line !== "number" || !bet.subjectId) return false;
+  if (bet.metric !== "playerTournamentPoints" && bet.metric !== "playerTournamentWins") return false;
+  const tSnap = await db().collection("tournaments").doc(bet.tournamentId).get();
+  const tournament = tSnap.data();
+  const leagueTeams = leagueTeamsOf(tournament);
+  if (!tournament || !leagueTeams) return false;
+  const season = await loadLeagueSeason(bet.tournamentId, tournament, leagueTeams);
+  const st = playerSeasonState(season.standings, season.allMatches, bet.subjectId);
+  const banked = bet.metric === "playerTournamentWins" ? st.wins : st.points;
+  return !isLivePointLine(banked, st.remaining, bet.line);
+}
+
 /** Loads a tournament and asserts the sportsbook is enabled for it. */
-async function requireSportsbookTournament(tournamentId: string): Promise<void> {
+async function requireSportsbookTournament(tournamentId: string): Promise<FirebaseFirestore.DocumentData> {
   const snap = await db().collection("tournaments").doc(tournamentId).get();
   if (!snap.exists) throw new HttpsError("not-found", "Tournament not found");
-  if (snap.data()?.sportsbookEnabled !== true) {
+  const t = snap.data()!;
+  if (t.sportsbookEnabled !== true) {
     throw new HttpsError("failed-precondition", "Betting is not enabled for this tournament");
   }
+  return t;
+}
+
+/** A league season's teams, or null for a Cup tournament. */
+function leagueTeamsOf(tournament: FirebaseFirestore.DocumentData | undefined): LeagueTeam[] | null {
+  const teams = tournament?.leagueTeams;
+  return Array.isArray(teams) && teams.length > 0 ? (teams as LeagueTeam[]) : null;
+}
+
+interface LeagueSeason {
+  leagueTeams: LeagueTeam[];
+  rounds: RoundDoc[];
+  matchesByRound: Record<string, MatchDoc[]>;
+  allMatches: MatchDoc[];
+  standings: LeagueStandings;
+}
+
+/**
+ * Loads a league season (rounds + every match) and computes its standings with
+ * the same code the app's standings page runs, so bets settle on the numbers
+ * players see. Full match docs are read: the month bonus's captain card-off
+ * needs hole scores. A season is ~80 matches, and this only runs when a
+ * season-level bet is posted or a match closes.
+ */
+export async function loadLeagueSeason(
+  tournamentId: string,
+  tournament: FirebaseFirestore.DocumentData,
+  leagueTeams: LeagueTeam[]
+): Promise<LeagueSeason> {
+  const [roundsSnap, matchesSnap] = await Promise.all([
+    db().collection("rounds").where("tournamentId", "==", tournamentId).get(),
+    db().collection("matches").where("tournamentId", "==", tournamentId).get(),
+  ]);
+  const rounds = roundsSnap.docs.map((d) => ({ ...d.data(), id: d.id }) as RoundDoc);
+  const matchesByRound: Record<string, MatchDoc[]> = {};
+  const allMatches: MatchDoc[] = [];
+  for (const d of matchesSnap.docs) {
+    const m = { ...d.data(), id: d.id } as MatchDoc & { roundId?: string };
+    allMatches.push(m);
+    if (m.roundId) (matchesByRound[m.roundId] ??= []).push(m);
+  }
+  const standings = computeLeagueStandings({
+    rounds,
+    matchesByRound,
+    leagueTeams,
+    prior: (tournament.priorStandings as PriorStandings | undefined) ?? null,
+  });
+  return { leagueTeams, rounds, matchesByRound, allMatches, standings };
 }
 
 /** Shared create path for open offers and directed challenges. */
@@ -265,9 +362,11 @@ async function createBet(
   if (!isMarket(market)) {
     throw new HttpsError("invalid-argument", "Invalid betting market");
   }
-  // Sides are teams for match/round/cupFuture, over/under for overUnder.
+  // Sides are over/under for overUnder, yes/no for playoffs, teams otherwise.
   if (market === "overUnder") {
     if (!isOverUnderSide(side)) throw new HttpsError("invalid-argument", "side must be 'over' or 'under'");
+  } else if (market === "playoffs") {
+    if (!isYesNoSide(side)) throw new HttpsError("invalid-argument", "side must be 'yes' or 'no'");
   } else if (!isTeamSide(side)) {
     throw new HttpsError("invalid-argument", "side must be 'teamA' or 'teamB'");
   }
@@ -275,7 +374,10 @@ async function createBet(
     throw new HttpsError("invalid-argument", "amount must be a positive number");
   }
 
-  await requireSportsbookTournament(tournamentId);
+  const tournament = await requireSportsbookTournament(tournamentId);
+  const leagueTeams = leagueTeamsOf(tournament);
+  let leagueTeamAId: string | undefined; // teamMonth teamA side
+  let leagueTeamBId: string | undefined; // teamMonth teamB side
 
   // Per-market bettability + required references.
   if (market === "match") {
@@ -302,6 +404,36 @@ async function createBet(
     }
     if (await isRoundStarted(roundId)) {
       throw new HttpsError("failed-precondition", "Betting on this round is closed — it has already started");
+    }
+  } else if (market === "teamMonth") {
+    if (!leagueTeams) throw new HttpsError("failed-precondition", "Team battles are only offered in a league season");
+    if (!roundId || typeof roundId !== "string") {
+      throw new HttpsError("invalid-argument", "roundId is required for a team battle");
+    }
+    const a = data.leagueTeamAId;
+    const b = data.leagueTeamBId;
+    const known = (id: unknown): id is string => typeof id === "string" && leagueTeams.some((t) => t.id === id);
+    if (!known(a) || !known(b) || a === b) {
+      throw new HttpsError("invalid-argument", "A team battle needs two different league teams");
+    }
+    const roundSnap = await db().collection("rounds").doc(roundId).get();
+    if (!roundSnap.exists) throw new HttpsError("not-found", "Month not found");
+    if (roundSnap.data()?.tournamentId !== tournamentId) {
+      throw new HttpsError("invalid-argument", "That month is not in this season");
+    }
+    if (await isRoundStarted(roundId)) {
+      throw new HttpsError("failed-precondition", "Team battles for this month are closed — its matches have started");
+    }
+    leagueTeamAId = a;
+    leagueTeamBId = b;
+  } else if (market === "playoffs") {
+    if (!leagueTeams) throw new HttpsError("failed-precondition", "Playoff bets are only offered in a league season");
+    subjectId = await requirePlayerExists(data.subjectId, "subjectId");
+    if (!leagueTeams.some((t) => (t.playerIds ?? []).includes(subjectId!))) {
+      throw new HttpsError("invalid-argument", "That player isn't in the league");
+    }
+    if (await isPlayerPropClosed(tournamentId, subjectId)) {
+      throw new HttpsError("failed-precondition", "Playoff bets on this player are closed — their last match has started");
     }
   } else if (isCaptainsMarket(market, metric as BetOverUnderMetric | undefined)) {
     // The captains' match is its own collection with no rounds or matches behind
@@ -366,6 +498,19 @@ async function createBet(
       if (await isPlayerPropClosed(tournamentId, subjectId)) {
         throw new HttpsError("failed-precondition", "Player props betting is closed — that player has no matches left");
       }
+      // League: these settle on the player's FINAL season total, points already
+      // banked included — so only lines the rest of the season can still decide.
+      if (leagueTeams) {
+        const season = await loadLeagueSeason(tournamentId, tournament, leagueTeams);
+        const st = playerSeasonState(season.standings, season.allMatches, subjectId);
+        const banked = metric === "playerTournamentWins" ? st.wins : st.points;
+        if (!isLivePointLine(banked, st.remaining, line)) {
+          throw new HttpsError(
+            "failed-precondition",
+            `That line is already decided — pick one between ${banked} and ${banked + st.remaining}`
+          );
+        }
+      }
     }
   } else if (market === "playerMatchup") {
     subjectAId = await requirePlayerExists(data.subjectAId, "subjectAId");
@@ -410,11 +555,16 @@ async function createBet(
   };
   // Persist only the references each market needs.
   if (typeof matchId === "string" && (market === "match" || market === "overUnder")) doc.matchId = matchId;
-  if (market === "round" && typeof roundId === "string") doc.roundId = roundId;
+  if ((market === "round" || market === "teamMonth") && typeof roundId === "string") doc.roundId = roundId;
   if (market === "overUnder") {
     doc.metric = metric;
     doc.line = line;
     if (subjectId) doc.subjectId = subjectId;
+  }
+  if (market === "playoffs") doc.subjectId = subjectId;
+  if (market === "teamMonth") {
+    doc.leagueTeamAId = leagueTeamAId;
+    doc.leagueTeamBId = leagueTeamBId;
   }
   if (market === "playerMatchup") {
     doc.subjectAId = subjectAId;
@@ -478,6 +628,9 @@ export const acceptBet = onCall(async (request) => {
   if (await marketClosed(preBet)) {
     throw new HttpsError("failed-precondition", "Betting is closed for this market");
   }
+  if (await leagueLineDecided(preBet)) {
+    throw new HttpsError("failed-precondition", "That line is already decided — this offer can't be taken");
+  }
 
   await db().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -534,6 +687,11 @@ export const cancelBet = onCall(async (request) => {
   if (!pre.exists) throw new HttpsError("not-found", "Bet not found");
   const preBet = pre.data() as BetDoc;
   const marketIsClosed = preBet.status === "active" ? await marketClosed(preBet) : false;
+  let lockedForSeason = false;
+  if (preBet.status === "active") {
+    const tSnap = await db().collection("tournaments").doc(preBet.tournamentId).get();
+    lockedForSeason = isLeagueSeasonProp(preBet, !!leagueTeamsOf(tSnap.data()));
+  }
 
   await db().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -547,6 +705,9 @@ export const cancelBet = onCall(async (request) => {
     } else if (bet.status === "active") {
       const isParticipant = bet.proposerId === playerId || bet.acceptorId === playerId;
       if (!isParticipant) throw new HttpsError("permission-denied", "You are not part of this bet");
+      if (lockedForSeason) {
+        throw new HttpsError("failed-precondition", "Season bets can't be cancelled once they're locked in");
+      }
       if (marketIsClosed) {
         throw new HttpsError(
           "failed-precondition",
@@ -630,6 +791,12 @@ export const settlePlayerFutures = onCall(async (request) => {
   if (!tournamentId || typeof tournamentId !== "string") {
     throw new HttpsError("invalid-argument", "Missing tournamentId");
   }
+  // League seasons carry pre-app points (priorStandings) that playerMatchFacts
+  // never saw — their season props settle off the standings in settleLeagueBets.
+  const tSnap = await db().collection("tournaments").doc(tournamentId).get();
+  if (leagueTeamsOf(tSnap.data())) {
+    throw new HttpsError("failed-precondition", "This is a league season — use Settle league bets instead");
+  }
 
   // Total tournament points (and won matches) per player from playerMatchFacts.
   const factsSnap = await db().collection("playerMatchFacts").where("tournamentId", "==", tournamentId).get();
@@ -668,6 +835,109 @@ export const settlePlayerFutures = onCall(async (request) => {
   if (settledCount > 0) await batch.commit();
 
   return { success: true, settledCount };
+});
+
+/** The league markets settled from the season standings (not per match). */
+function isLeagueSeasonBet(b: BetDoc): boolean {
+  return (
+    b.market === "teamMonth" ||
+    b.market === "playoffs" ||
+    (b.market === "overUnder" && (b.metric === "playerTournamentPoints" || b.metric === "playerTournamentWins"))
+  );
+}
+
+export interface LeagueSettleSummary {
+  settledCount: number;
+  seasonComplete: boolean;
+  /** Names of months with team battles still waiting on matches or the bonus. */
+  pendingMonths: string[];
+}
+
+/**
+ * Settle every league bet whose market is final: team battles for months that
+ * are complete (every match closed, bonus decided) and — once every match of the
+ * season is closed — the playoffs and final-points bets. Offers nobody took in a
+ * finished market are voided. Only open/pending/active bets are touched, so it's
+ * idempotent.
+ *
+ * Untaken season offers on a player whose match just closed
+ * (`closedMatchPlayerIds`) are voided too: the result moved the odds, so the
+ * poster shouldn't be left holding a stale price.
+ *
+ * Runs from the settleMatchBets trigger whenever a match closes (with
+ * `onlyIfBets`, so a close with no league bets riding costs one query) and from
+ * the settleLeagueBets admin button — e.g. after an admin decides a tied month's
+ * bonus, which no match close would pick up. Returns null for a Cup tournament.
+ */
+export async function settleLeagueBetsFor(
+  tournamentId: string,
+  opts: { onlyIfBets?: boolean; closedMatchPlayerIds?: string[] } = {}
+): Promise<LeagueSettleSummary | null> {
+  const tSnap = await db().collection("tournaments").doc(tournamentId).get();
+  const tournament = tSnap.data();
+  const leagueTeams = leagueTeamsOf(tournament);
+  if (!tournament || !leagueTeams) return null;
+
+  const betsSnap = await db()
+    .collection("bets")
+    .where("tournamentId", "==", tournamentId)
+    .where("status", "in", ["open", "pending", "active"])
+    .get();
+  const docs = betsSnap.docs.filter((d) => isLeagueSeasonBet(d.data() as BetDoc));
+  if (docs.length === 0 && opts.onlyIfBets) return { settledCount: 0, seasonComplete: false, pendingMonths: [] };
+
+  const season = await loadLeagueSeason(tournamentId, tournament, leagueTeams);
+  const finalMonths = new Set(
+    season.rounds
+      .filter((r) => (season.matchesByRound[r.id] ?? []).length > 0)
+      .filter((r) => isMonthFinal(season.standings, r.id, season.matchesByRound[r.id] ?? []))
+      .map((r) => r.id)
+  );
+  const seasonComplete = season.allMatches.length > 0 && season.allMatches.every((m) => m.status?.closed === true);
+
+  const batch = db().batch();
+  let settledCount = 0;
+  let writes = 0;
+  const pendingRoundIds = new Set<string>();
+  const justPlayed = new Set(opts.closedMatchPlayerIds ?? []);
+  for (const d of docs) {
+    const bet = d.data() as BetDoc;
+    const marketFinal =
+      bet.market === "teamMonth"
+        ? !!bet.roundId && finalMonths.has(bet.roundId)
+        : seasonComplete || (!!bet.subjectId && justPlayed.has(bet.subjectId));
+    if (bet.status === "active") {
+      const result = leagueBetResult(bet, season.standings, finalMonths, seasonComplete);
+      if (result) {
+        batch.update(d.ref, { status: "settled", result, settledAt: FieldValue.serverTimestamp() });
+        settledCount++;
+        writes++;
+      } else if (bet.market === "teamMonth" && bet.roundId) {
+        pendingRoundIds.add(bet.roundId);
+      }
+    } else if (marketFinal) {
+      batch.update(d.ref, { status: "void" });
+      writes++;
+    }
+  }
+  if (writes > 0) await batch.commit();
+
+  const pendingMonths = season.rounds
+    .filter((r) => pendingRoundIds.has(r.id))
+    .map((r) => (r as RoundDoc & { name?: string }).name || r.id);
+  return { settledCount, seasonComplete, pendingMonths };
+}
+
+/** Admin: settle whatever league bets are final right now (see settleLeagueBetsFor). */
+export const settleLeagueBets = onCall(async (request) => {
+  await requireAdmin(request, "settleLeagueBets", { maxCalls: 10, windowSeconds: 60 });
+  const { tournamentId } = (request.data || {}) as Record<string, unknown>;
+  if (!tournamentId || typeof tournamentId !== "string") {
+    throw new HttpsError("invalid-argument", "Missing tournamentId");
+  }
+  const summary = await settleLeagueBetsFor(tournamentId);
+  if (!summary) throw new HttpsError("failed-precondition", "This tournament isn't a league season");
+  return { success: true, ...summary };
 });
 
 /**

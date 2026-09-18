@@ -9,6 +9,8 @@ import {
   settleRoundBet,
   settleOverUnderBet,
   settlePlayerMatchupBet,
+  settleYesNoBet,
+  settleTeamMonthBet,
 } from "./betSettlement.js";
 import type { BetDoc } from "../types.js";
 
@@ -164,5 +166,25 @@ describe("settlePlayerMatchupBet", () => {
   it("resolves correctly when the proposer backed subject B (teamB)", () => {
     const bet = matchupBet({ proposerSide: "teamB", acceptorSide: "teamA" });
     expect(settlePlayerMatchupBet(bet, 2, 5)).toMatchObject({ winnerId: "pAlice", loserId: "pBob", payout: 20 });
+  });
+});
+
+describe("settleYesNoBet", () => {
+  it("pays the yes side when the answer is yes", () => {
+    const result = settleYesNoBet(activeBet({ market: "playoffs", proposerSide: "yes", acceptorSide: "no" }), true);
+    expect(result).toEqual({ outcome: "yes", winnerId: "pAlice", loserId: "pBob", payout: 20 });
+  });
+  it("pays the no side when the answer is no", () => {
+    const result = settleYesNoBet(activeBet({ market: "playoffs", proposerSide: "yes", acceptorSide: "no" }), false);
+    expect(result).toEqual({ outcome: "no", winnerId: "pBob", loserId: "pAlice", payout: 20 });
+  });
+});
+
+describe("settleTeamMonthBet", () => {
+  it("pays the side whose team scored more that month", () => {
+    expect(settleTeamMonthBet(activeBet({ market: "teamMonth" }), 1, 3)).toMatchObject({ outcome: "teamB", winnerId: "pBob" });
+  });
+  it("pushes on level points", () => {
+    expect(settleTeamMonthBet(activeBet({ market: "teamMonth" }), 2.5, 2.5)).toEqual({ outcome: "push", payout: 0 });
   });
 });

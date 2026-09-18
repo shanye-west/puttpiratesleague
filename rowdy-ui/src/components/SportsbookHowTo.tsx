@@ -17,13 +17,15 @@ export interface SportsbookHowToProps {
   onClose: () => void;
   /** Swap the market list for the captains'-match markets (pre-draft tournaments). */
   hasCaptainsMatch?: boolean;
+  /** Swap the market list for the league-season markets (Putt Pirates). */
+  isLeague?: boolean;
 }
 
 // Tournament-long player-prop tile colors (mirror PlayerPropSheet / Sportsbook).
 const OVER_COLOR = "#059669";
 const UNDER_COLOR = "#475569";
 
-export default function SportsbookHowTo({ isOpen, onClose, hasCaptainsMatch }: SportsbookHowToProps) {
+export default function SportsbookHowTo({ isOpen, onClose, hasCaptainsMatch, isLeague }: SportsbookHowToProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="🎲 How the Sportsbook works" ariaLabel="Sportsbook how-to" maxWidth="max-w-md">
       <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1 text-sm leading-relaxed text-foreground">
@@ -68,7 +70,9 @@ export default function SportsbookHowTo({ isOpen, onClose, hasCaptainsMatch }: S
               Either player can <strong className="text-foreground">call it off</strong> until the market closes
               {hasCaptainsMatch
                 ? " (the round gets played, or the book is shut) — after that it's set."
-                : " (the match tees off / the tournament begins) — after that it's set."}
+                : isLeague
+                  ? " (the match starts, or the month's first match starts for a team battle) — after that it's set. Season bets (playoffs, final points) are set as soon as they lock in."
+                  : " (the match tees off / the tournament begins) — after that it's set."}
             </li>
             <li>
               When the result is known, the bet <strong className="text-foreground">settles automatically</strong> and
@@ -79,7 +83,52 @@ export default function SportsbookHowTo({ isOpen, onClose, hasCaptainsMatch }: S
 
         {/* What you can bet */}
         <Section title="What you can bet">
-          {hasCaptainsMatch ? (
+          {isLeague ? (
+            <>
+              <Market
+                emoji="⛳"
+                name="Match Winner"
+                window="Open until the match starts"
+                desc="Pick who wins one of the month's matches. Settles on the result; a halved match is a push."
+              />
+              <Market
+                emoji="📏"
+                name="Match Holes O/U"
+                window="Open until the match starts"
+                desc="Over or under on how many holes a match goes before it closes. Half-lines, so there are no pushes."
+                sides={[
+                  { label: "Under", color: UNDER_COLOR },
+                  { label: "Over", color: OVER_COLOR },
+                ]}
+              />
+              <Market
+                emoji="🏴‍☠️"
+                name="Team Battle"
+                window="Open until the month's first match starts"
+                desc="Pick which of two teams scores more points in a month. The month's bonus point counts. Equal points is a push. Settles once the month's matches are done and its bonus is decided."
+              />
+              <Market
+                emoji="🎟️"
+                name="Makes the Playoffs"
+                window="Open until the player's last match starts"
+                desc="Yes or no on a player finishing in the playoff spots: the top 4, plus anyone tied for 4th. Settles on the final standings. Can't be called off once locked in, and an untaken offer is pulled when that player's next match finishes."
+                sides={[
+                  { label: "No", color: UNDER_COLOR },
+                  { label: "Yes", color: OVER_COLOR },
+                ]}
+              />
+              <Market
+                emoji="📊"
+                name="Final Points O/U"
+                window="Open until the player's last match starts"
+                desc="Over or under on a player's final season points, including points already banked. The sheet only offers lines that are still undecided. A win is 1 point and a halve is ½, so a whole-number line can push. Settles on the final standings. Can't be called off once locked in, and an untaken offer is pulled when that player's next match finishes."
+                sides={[
+                  { label: "Under", color: UNDER_COLOR },
+                  { label: "Over", color: OVER_COLOR },
+                ]}
+              />
+            </>
+          ) : hasCaptainsMatch ? (
             <>
               <Market
                 emoji="🥊"

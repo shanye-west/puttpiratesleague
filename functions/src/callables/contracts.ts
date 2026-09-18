@@ -535,7 +535,7 @@ export interface CreateBetOfferRequest {
   market: BetMarket;
   /** Required for "match" and match-scoped "overUnder" markets. */
   matchId?: string;
-  /** Required when market === "round". */
+  /** Required when market === "round" or "teamMonth" (the month). */
   roundId?: string;
   /** Required when market === "overUnder". */
   metric?: BetOverUnderMetric;
@@ -549,7 +549,11 @@ export interface CreateBetOfferRequest {
   subjectBId?: string;
   /** Required when market === "captainsRound": which round is being bet on. */
   captainsRoundNumber?: number;
-  /** Team to win (team / playerMatchup markets) or "over"/"under" (overUnder). */
+  /** teamMonth: league team backed by the teamA side. */
+  leagueTeamAId?: string;
+  /** teamMonth: league team backed by the teamB side. */
+  leagueTeamBId?: string;
+  /** Team to win (team / playerMatchup / teamMonth), "over"/"under" (overUnder), or "yes"/"no" (playoffs). */
   side: BetSide;
   /** Even-money stake each side risks. */
   amount: number;
@@ -587,6 +591,23 @@ export interface SettlePlayerFuturesRequest {
 
 export interface SettlePlayerFuturesResult extends AdminResult {
   settledCount: number;
+}
+
+/**
+ * Admin: settle every league market that is final — month team bets for
+ * completed months, and the season bets (playoffs + final points O/U) once
+ * every match of the season is closed. Safe to run any time.
+ */
+export interface SettleLeagueBetsRequest {
+  tournamentId: string;
+}
+
+export interface SettleLeagueBetsResult extends AdminResult {
+  settledCount: number;
+  /** False while any season match is still open (season bets were left alone). */
+  seasonComplete: boolean;
+  /** Months whose team bets are waiting on unfinished matches or an unresolved bonus. */
+  pendingMonths: string[];
 }
 
 /**

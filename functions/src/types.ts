@@ -485,6 +485,11 @@ export interface RoundRecapDoc {
  *                  teamB = player B); a halved match is a push
  *  - captainsRound: who wins one round of the captains' match (teamA/teamB),
  *                  identified by captainsRoundNumber; a halved round is a push
+ *  - playoffs:     league — does one player (subjectId) make the playoffs (top 4
+ *                  plus ties for 4th)? Sides yes/no; settles on final standings
+ *  - teamMonth:    league — which of two league teams (leagueTeamAId /
+ *                  leagueTeamBId) scores more points in one month (roundId),
+ *                  counting the month's bonus point; sides teamA/teamB, level = push
  */
 export type BetMarket =
   | "match"
@@ -493,7 +498,9 @@ export type BetMarket =
   | "overUnder"
   | "playerMatchup"
   | "captainsMatch"
-  | "captainsRound";
+  | "captainsRound"
+  | "playoffs"
+  | "teamMonth";
 
 /** What an over/under bet is measured against.
  *  - matchHolesPlayed:        holes the match went before closing (status.thru)
@@ -540,7 +547,7 @@ export type BetStatus =
  * team; for `overUnder` markets it is "over" / "under" the line. Proposer and
  * acceptor always hold opposite sides.
  */
-export type BetSide = "teamA" | "teamB" | "over" | "under";
+export type BetSide = "teamA" | "teamB" | "over" | "under" | "yes" | "no";
 
 /** Settlement outcome written when a bet is resolved. */
 export interface BetResult {
@@ -555,13 +562,15 @@ export interface BetDoc {
   tournamentId: string;
   market: BetMarket;
   matchId?: string;                    // present for match markets + match-scoped over/unders
-  roundId?: string;                    // present when market === "round"
+  roundId?: string;                    // present when market === "round" or "teamMonth"
   metric?: BetOverUnderMetric;         // present when market === "overUnder"
   line?: number;                       // the over/under line (use half-lines to avoid pushes)
-  subjectId?: string;                  // player O/U: the player whose tournament points are bet on
+  subjectId?: string;                  // player O/U + playoffs: the player bet on
   subjectAId?: string;                 // playerMatchup: player backed by the teamA side
   subjectBId?: string;                 // playerMatchup: player backed by the teamB side
   captainsRoundNumber?: number;        // present when market === "captainsRound"
+  leagueTeamAId?: string;              // teamMonth: league team backed by the teamA side
+  leagueTeamBId?: string;              // teamMonth: league team backed by the teamB side
   kind: BetKind;
   status: BetStatus;
   amount: number;                      // even-money stake each side risks

@@ -1,26 +1,35 @@
 /**
- * Putt Pirates league standings — pure, computed on the client from the season's
- * rounds, matches and league teams (no trigger, no denormalized doc).
+ * Server copy of the Putt Pirates league standings (rowdy-ui/src/utils/leagueStandings.ts),
+ * so league bets (playoffs, final points, month team battles) settle on exactly
+ * the numbers the app's standings page shows — including priorStandings, the
+ * monthly bonus and its captain card-off.
  *
- * Individual: every player's MP / W / L / T / points over closed matches, with
- * in-progress matches shown as projected. Top 4 (plus ties for 4th) make the
- * playoffs.
- *
- * Teams: a team's record is its members' records summed (a same-team pairing
- * yields one W and one L for that team), plus 1 EXTRA point per month to the
- * team with the most points that month. A monthly tie is broken by the tied
- * captains' lowest NET score that month (computed from their match cards);
- * when that can't be resolved from the app's data (a result-only match, a
- * captain without a card, a further tie) the bonus stays pending until an
- * admin sets `round.bonusTeamId`.
- *
- * `prior` (tournament.priorStandings) is what the league had already scored
- * before the app: each player's row starts from it and each team's month cell
- * starts from it, so the table matches the league's own and the app's matches
- * add on top.
+ * Only this header differs from the client file: the client imports its
+ * MatchDoc/RoundDoc types, while functions has no such types, so the minimal
+ * shapes the logic reads are declared here. Edit the client file, then copy the
+ * part below the marker; leagueStandings.test.ts fails if the two drift.
  */
 
-import type { LeagueTeam, MatchDoc, PriorStandings, RoundDoc } from "../types";
+import type { LeagueTeam, PriorStandings } from "../types.js";
+
+type MatchSide = { playerId: string; strokesReceived?: number[] };
+/** The fields of a match doc the standings read. */
+export type MatchDoc = {
+  id?: string;
+  teamAPlayers?: MatchSide[];
+  teamBPlayers?: MatchSide[];
+  result?: { winner?: "teamA" | "teamB" | "AS" | null } | null;
+  status?: { closed?: boolean; thru?: number } | null;
+  manualResult?: unknown;
+  holes?: Record<string, { input?: unknown } | undefined>;
+};
+/** The fields of a round (month) doc the standings read. */
+export type RoundDoc = {
+  id: string;
+  day?: number;
+  pointsValue?: number;
+  bonusTeamId?: string | null;
+};
 
 // ---- Everything below is mirrored verbatim in functions/src/helpers/leagueStandings.ts
 // ---- (league bets settle from it); functions/src/helpers/leagueStandings.test.ts fails on drift.

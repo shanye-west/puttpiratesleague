@@ -16,6 +16,8 @@ import type {
   SettleCupFuturesResult,
   SettlePlayerFuturesRequest,
   SettlePlayerFuturesResult,
+  SettleLeagueBetsRequest,
+  SettleLeagueBetsResult,
   SettleCaptainsMatchBetsRequest,
   SettleCaptainsMatchBetsResult,
   RecordSettlementRequest,
@@ -36,6 +38,7 @@ export const betsApi = {
   declineBet: call<BetActionRequest, AdminResult>("declineBet"),
   settleCupFutures: call<SettleCupFuturesRequest, SettleCupFuturesResult>("settleCupFutures"),
   settlePlayerFutures: call<SettlePlayerFuturesRequest, SettlePlayerFuturesResult>("settlePlayerFutures"),
+  settleLeagueBets: call<SettleLeagueBetsRequest, SettleLeagueBetsResult>("settleLeagueBets"),
   settleCaptainsMatchBets: call<SettleCaptainsMatchBetsRequest, SettleCaptainsMatchBetsResult>(
     "settleCaptainsMatchBets"
   ),

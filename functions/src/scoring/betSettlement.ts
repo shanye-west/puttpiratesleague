@@ -77,3 +77,20 @@ export function settlePlayerMatchupBet(bet: ResolvableBet, pointsA: number, poin
   const outcome = pointsA > pointsB ? "teamA" : pointsB > pointsA ? "teamB" : "push";
   return resolve(bet, outcome);
 }
+
+/**
+ * Settle a yes/no prop (league playoffs: did the subject make the cut?).
+ * There is no push — the answer is always yes or no.
+ */
+export function settleYesNoBet(bet: ResolvableBet, yes: boolean): BetResult {
+  return resolve(bet, yes ? "yes" : "no");
+}
+
+/**
+ * Settle a league month team battle from the two teams' points that month
+ * (members' match points plus the month's bonus point). teamA backs
+ * leagueTeamAId, teamB backs leagueTeamBId; level points is a push.
+ */
+export function settleTeamMonthBet(bet: ResolvableBet, teamAPoints: number, teamBPoints: number): BetResult {
+  return settleRoundBet(bet, teamAPoints, teamBPoints);
+}

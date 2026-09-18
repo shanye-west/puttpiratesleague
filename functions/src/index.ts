@@ -42,6 +42,7 @@ import {
   isValidGross
 } from "./scoring/matchScoring.js";
 import { settleMatchBet, settleOverUnderBet, settleRoundBet } from "./scoring/betSettlement.js";
+import { settleLeagueBetsFor } from "./callables/betsOps.js";
 import { handleMatchNotify } from "./messaging/matchNotify.js";
 import { handleTournamentNotify } from "./messaging/tournamentNotify.js";
 
@@ -2102,7 +2103,9 @@ async function settleRoundBetsIfComplete(roundId: string | undefined): Promise<v
   let count = 0;
   betsSnap.docs.forEach((d) => {
     const bet = d.data() as BetDoc;
-    if (bet.status !== "active") return;
+    // League team battles also carry a roundId but settle on league teams, not
+    // match sides — see settleLeagueBetsFor.
+    if (bet.status !== "active" || bet.market !== "round") return;
     const result = settleRoundBet(bet, teamAPoints, teamBPoints);
     batch.update(d.ref, { status: "settled", result, settledAt: FieldValue.serverTimestamp() });
     count++;
@@ -2162,6 +2165,14 @@ export const settleMatchBets = onDocumentWritten("matches/{matchId}", withTrigge
 
     // Closing this match may complete its round — settle round/session bets.
     await settleRoundBetsIfComplete(after.roundId as string | undefined);
+    // League: it may also finish a month (team battles) or the season (playoffs,
+    // final points). No-op for a Cup tournament or when no league bets ride.
+    if (typeof after.tournamentId === "string") {
+      const playerIds = [...(after.teamAPlayers ?? []), ...(after.teamBPlayers ?? [])]
+        .map((p: { playerId?: string }) => p.playerId)
+        .filter((id: unknown): id is string => typeof id === "string");
+      await settleLeagueBetsFor(after.tournamentId, { onlyIfBets: true, closedMatchPlayerIds: playerIds });
+    }
     return;
   }
 
@@ -2269,6 +2280,7 @@ export {
   declineBet,
   settleCupFutures,
   settlePlayerFutures,
+  settleLeagueBets,
   settleCaptainsMatchBets,
 } from "./callables/betsOps.js";
 
