@@ -15,13 +15,14 @@
  * therefore compare status only, never holes.
  *
  * Recipients are the whole tournament roster ("all matches" scope); each
- * player's per-category preference is applied downstream in notify().
+ * player's per-category preference is applied up front (eligibleRecipients),
+ * so an event nobody has opted into costs no further reads.
  */
 
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import type { Change, FirestoreEvent } from "firebase-functions/v2/firestore";
 import type { DocumentSnapshot } from "firebase-admin/firestore";
-import { notify } from "./notify.js";
+import { deliverNotification, eligibleRecipients } from "./notify.js";
 import { loadTournamentMeta } from "../helpers/roster.js";
 import type { MatchStatus } from "../types.js";
 
@@ -61,6 +62,18 @@ export async function handleMatchNotify(event: MatchWriteEvent): Promise<void> {
   // lead-change for the same write.
   if (!justClosed && !leaderFlipped) return;
 
+  const tournamentId = after.tournamentId;
+  if (!tournamentId || typeof tournamentId !== "string") return;
+  const meta = await loadTournamentMeta(tournamentId);
+  if (meta.playerIds.length === 0) return;
+
+  // Resolve who actually wants this before any other read. Lead changes are
+  // opt-in (off by default), so on most lead flips nobody is listening and we
+  // stop here — skipping the state, name and token reads entirely.
+  const category = justClosed ? "matchResult" : "matchLeadChange";
+  const eligible = await eligibleRecipients(meta.playerIds, category);
+  if (eligible.length === 0) return;
+
   // Idempotency: dedupe redelivered events (triggers are at-least-once). Keyed off
   // the event kind + the standing it represents, stored off the match doc.
   const sig = justClosed
@@ -69,27 +82,22 @@ export async function handleMatchNotify(event: MatchWriteEvent): Promise<void> {
   const stateRef = db().collection("matchNotifyState").doc(event.params.matchId);
   if ((await stateRef.get()).data()?.sig === sig) return;
 
-  const tournamentId = after.tournamentId;
-  if (!tournamentId || typeof tournamentId !== "string") return;
-  const meta = await loadTournamentMeta(tournamentId);
-  if (meta.playerIds.length === 0) return;
-
   // League (Putt Pirates): a match is one player vs another, so label the sides
   // by the players' names rather than the (empty) Cup team names.
   const { teamAName, teamBName } = meta.leagueMode ? await sideNames(after, meta) : meta;
 
   const link = `/match/${event.params.matchId}`;
   if (justClosed) {
-    await notify(meta.playerIds, {
-      category: "matchResult",
+    await deliverNotification(eligible, {
+      category,
       title: "Final",
       body: resultBody(afterStatus, after.result?.winner, teamAName, teamBName),
       link,
     });
   } else {
     const name = teamLabel(afterStatus.leader as "teamA" | "teamB", teamAName, teamBName);
-    await notify(meta.playerIds, {
-      category: "matchLeadChange",
+    await deliverNotification(eligible, {
+      category,
       title: "Lead change",
       body: `${name} now lead ${Math.abs(afterStatus.margin ?? 0)} up thru ${afterStatus.thru ?? 0}`,
       link,

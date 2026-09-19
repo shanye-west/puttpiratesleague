@@ -58,6 +58,31 @@ function getTournamentWinner(
   return null;
 }
 
+interface PointTotalsLike {
+  teamAConfirmed?: number;
+  teamBConfirmed?: number;
+  teamAPending?: number;
+  teamBPending?: number;
+  matchCount?: number;
+}
+
+/**
+ * Pure: could this pointTotals change have altered which matches are closed?
+ * Every closed match contributes exactly its pointsValue to the combined
+ * confirmed total (a win all to one side, a halve split), so that sum moves
+ * precisely when a match closes or reopens; matchCount covers a match being
+ * added or removed. Lead flips in open matches only move the pending totals.
+ * The authoritative check (isRoundComplete) still runs whenever this is true.
+ */
+export function closedSetMayHaveChanged(
+  before: PointTotalsLike | undefined,
+  after: PointTotalsLike | undefined
+): boolean {
+  if (!before || !after) return true;
+  const confirmed = (pt: PointTotalsLike) => (pt.teamAConfirmed ?? 0) + (pt.teamBConfirmed ?? 0);
+  return confirmed(before) !== confirmed(after) || (before.matchCount ?? 0) !== (after.matchCount ?? 0);
+}
+
 /** A round is final once every one of its matches is closed. */
 async function isRoundComplete(roundId: string): Promise<boolean> {
   const snap = await db().collection("matches").where("roundId", "==", roundId).get();
@@ -79,8 +104,11 @@ export async function handleTournamentNotify(event: RoundWriteEvent): Promise<vo
 
   const meta = await loadTournamentMeta(tournamentId);
   if (meta.playerIds.length === 0) return;
-  // League season (Putt Pirates): no two-sided Cup standings to sum.
+  // League season (Putt Pirates): no two-sided Cup standings to sum. The only
+  // league milestone is a month going final, which can only happen when a match
+  // closes (or one is removed) — so skip the lead-flip churn in pointTotals.
   if (meta.leagueMode) {
+    if (!closedSetMayHaveChanged(before?.pointTotals, after.pointTotals)) return;
     await handleLeagueRoundNotify(event, meta.playerIds, after);
     return;
   }

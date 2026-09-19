@@ -21,8 +21,10 @@
       "Bash(firebase functions:log)",
       "Bash(firebase functions:log:*)"
     ],
+    "ask": [
+      "Bash(firebase deploy:*)"
+    ],
     "deny": [
-      "Bash(firebase deploy:*)",
       "Bash(npm run deploy:*)",
       "Bash(npm run seed:*)",
       "Bash(npm run seed)",

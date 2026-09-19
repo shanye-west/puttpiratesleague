@@ -3,10 +3,12 @@ import {
   resolveCommentRecipients,
   tokensToPrune,
   filterByPref,
+  applyPrefExceptions,
   isCategoryEnabled,
   DEFAULT_NOTIFICATION_PREFS,
   type NotificationPrefs,
 } from "./notify.js";
+import { closedSetMayHaveChanged } from "./tournamentNotify.js";
 
 describe("resolveCommentRecipients", () => {
   it("sportsbook feed: notifies the whole tournament roster except the author", () => {
@@ -124,5 +126,65 @@ describe("filterByPref", () => {
       "pOptedIn",
       "pMissing",
     ]);
+  });
+});
+
+describe("applyPrefExceptions", () => {
+  const roster = ["pA", "pB", "pC"];
+  const prefs = new Map<string, NotificationPrefs | undefined>([
+    ["pA", { matchResult: false, matchLeadChange: true }],
+    ["pB", undefined],
+    ["pC", { matchResult: true, matchLeadChange: false }],
+  ]);
+  // What the equality query returns: players whose pref differs from the default.
+  const deviating = (category: keyof typeof DEFAULT_NOTIFICATION_PREFS) =>
+    new Set(roster.filter((id) => prefs.get(id)?.[category] === !DEFAULT_NOTIFICATION_PREFS[category]));
+
+  it("default-on category: drops only the players who opted out", () => {
+    expect(applyPrefExceptions(roster, deviating("matchResult"), "matchResult")).toEqual(["pB", "pC"]);
+  });
+
+  it("default-off category: keeps only the players who opted in", () => {
+    expect(applyPrefExceptions(roster, deviating("matchLeadChange"), "matchLeadChange")).toEqual(["pA"]);
+  });
+
+  it("agrees with filterByPref for every category", () => {
+    for (const category of Object.keys(DEFAULT_NOTIFICATION_PREFS) as (keyof typeof DEFAULT_NOTIFICATION_PREFS)[]) {
+      expect(applyPrefExceptions(roster, deviating(category), category)).toEqual(filterByPref(roster, prefs, category));
+    }
+  });
+
+  it("ignores exceptions for players who aren't recipients", () => {
+    expect(applyPrefExceptions(["pB"], new Set(["pZ"]), "matchLeadChange")).toEqual([]);
+    expect(applyPrefExceptions(["pB"], new Set(["pZ"]), "matchResult")).toEqual(["pB"]);
+  });
+});
+
+describe("closedSetMayHaveChanged", () => {
+  const base = { teamAConfirmed: 2, teamBConfirmed: 1, teamAPending: 1, teamBPending: 0, matchCount: 8 };
+
+  it("ignores a lead flip in an open match (pending only)", () => {
+    expect(closedSetMayHaveChanged(base, { ...base, teamAPending: 0, teamBPending: 1 })).toBe(false);
+  });
+
+  it("fires when a match closes as a win", () => {
+    expect(closedSetMayHaveChanged(base, { ...base, teamAConfirmed: 3, teamAPending: 0 })).toBe(true);
+  });
+
+  it("fires when a match closes halved", () => {
+    expect(closedSetMayHaveChanged(base, { ...base, teamAConfirmed: 2.5, teamBConfirmed: 1.5 })).toBe(true);
+  });
+
+  it("fires when a closed match reopens", () => {
+    expect(closedSetMayHaveChanged(base, { ...base, teamBConfirmed: 0 })).toBe(true);
+  });
+
+  it("ignores a closed match's winner being corrected (same closed set)", () => {
+    expect(closedSetMayHaveChanged(base, { ...base, teamAConfirmed: 1, teamBConfirmed: 2 })).toBe(false);
+  });
+
+  it("fires when a match is added or removed, or totals are new", () => {
+    expect(closedSetMayHaveChanged(base, { ...base, matchCount: 7 })).toBe(true);
+    expect(closedSetMayHaveChanged(undefined, base)).toBe(true);
   });
 });

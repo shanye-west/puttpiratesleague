@@ -98,7 +98,7 @@ The engine supports `singles`, `twoManBestBall`, `twoManShamble`, `twoManScrambl
 ## Cloud Functions map (`functions/src/`)
 
 - **Seed triggers** (`onCreate`): `seedMatchBoilerplate` (also writes `playerIds`), `seedRoundDefaults`, `seedTournamentDefaults`, `seedCourseDefaults`; `linkRoundToTournament` (`onWrite`).
-- **Scoring/stats triggers** (`onWrite`): `computeMatchOnWrite`, `updateMatchFacts`, `aggregatePlayerStats`, `computeRoundTotals`, `computeRoundSkins`.
+- **Scoring/stats triggers** (`onWrite`): `computeMatchOnWrite`, `updateMatchFacts`, `aggregatePlayerStats`, `computeRoundTotals`. (`computeRoundSkins` is Cup-only and **not exported/deployed** — league rounds have no course or skins pot, so it only cost a read per score write.)
 - **Betting settlement**: `settleMatchBets` (+ `scoring/betSettlement.ts`).
 - **Notifications**: `notifyMatchEvents`, `notifyTournamentEvents` (`messaging/`; league-aware via `TournamentMeta.leagueMode`).
 - **Callables** (`callables/`):

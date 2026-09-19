@@ -140,37 +140,60 @@ async function loadTokensForPlayers(playerIds: string[]): Promise<string[]> {
 }
 
 /**
- * Load each player's notificationPrefs (chunked documentId() `in` query — player
- * docs are keyed by player id). Absent doc / absent map => undefined, which
- * `filterByPref` treats as the per-category default. No index required.
+ * Pure: apply the players whose pref for a category *differs from the default*
+ * to a recipient list. For a default-on category `exceptions` are the players
+ * who opted out; for a default-off one, the players who opted in. Equivalent to
+ * `filterByPref` over every recipient's prefs (a non-boolean pref counts as
+ * unset there, and never matches the boolean equality query that feeds this).
  */
-async function loadPrefsForPlayers(
-  playerIds: string[]
-): Promise<Map<string, NotificationPrefs | undefined>> {
-  const out = new Map<string, NotificationPrefs | undefined>();
-  for (let i = 0; i < playerIds.length; i += 30) {
-    const chunk = playerIds.slice(i, i + 30);
-    if (chunk.length === 0) continue;
-    const snap = await db().collection("players").where(FieldPath.documentId(), "in", chunk).get();
-    snap.docs.forEach((d) => out.set(d.id, d.data()?.notificationPrefs as NotificationPrefs | undefined));
-  }
-  return out;
+export function applyPrefExceptions(
+  recipients: string[],
+  exceptions: ReadonlySet<string>,
+  category: NotificationCategory
+): string[] {
+  return DEFAULT_NOTIFICATION_PREFS[category]
+    ? recipients.filter((id) => !exceptions.has(id))
+    : recipients.filter((id) => exceptions.has(id));
+}
+
+/**
+ * Which of `recipients` want `category`. Rather than reading every recipient's
+ * player doc (16 reads per notification), query only the players whose pref
+ * deviates from the default — usually none, which Firestore bills as 1 read.
+ * Uses the automatic single-field index on the map subfield; no composite index.
+ */
+export async function eligibleRecipients(
+  recipientPlayerIds: string[],
+  category: NotificationCategory
+): Promise<string[]> {
+  const recipients = [...new Set(recipientPlayerIds)].filter(Boolean);
+  if (recipients.length === 0) return [];
+  const snap = await db()
+    .collection("players")
+    .where(new FieldPath("notificationPrefs", category), "==", !DEFAULT_NOTIFICATION_PREFS[category])
+    .get();
+  return applyPrefExceptions(recipients, new Set(snap.docs.map((d) => d.id)), category);
 }
 
 /**
  * Fan out a notification to recipients: write in-app history + send web push.
  * Best-effort; resolves even if messaging fails (errors are logged, not thrown).
+ *
+ * Respects each recipient's per-category preference (opt-out model; a missing
+ * pref falls back to DEFAULT_NOTIFICATION_PREFS). Suppressing a category drops
+ * BOTH the in-app history doc and the web push, so the bell/badge honor the
+ * choice too — not just the OS-level notification.
  */
 export async function notify(recipientPlayerIds: string[], payload: NotifyPayload): Promise<void> {
-  const recipients = [...new Set(recipientPlayerIds)].filter(Boolean);
-  if (recipients.length === 0) return;
+  const eligible = await eligibleRecipients(recipientPlayerIds, payload.category);
+  await deliverNotification(eligible, payload);
+}
 
-  // 0. Respect each recipient's per-category preference (opt-out model; a missing
-  // pref falls back to DEFAULT_NOTIFICATION_PREFS). Suppressing a category drops
-  // BOTH the in-app history doc and the web push, so the bell/badge honor the
-  // choice too — not just the OS-level notification.
-  const prefsById = await loadPrefsForPlayers(recipients);
-  const eligible = filterByPref(recipients, prefsById, payload.category);
+/**
+ * Deliver to recipients already filtered by `eligibleRecipients` — for callers
+ * that check eligibility up front to skip their own reads when nobody's listening.
+ */
+export async function deliverNotification(eligible: string[], payload: NotifyPayload): Promise<void> {
   if (eligible.length === 0) return;
 
   // 1. In-app notification history (bell + unread badges).

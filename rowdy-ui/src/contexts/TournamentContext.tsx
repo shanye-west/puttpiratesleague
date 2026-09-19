@@ -35,13 +35,36 @@ function toLookup(snap: QuerySnapshot): PlayerLookup {
   return out;
 }
 
+// Player docs (names, mostly) almost never change, so re-validating cached ones
+// against the server on every app launch spent a read per rostered player for
+// nothing. Revalidate at most this often per device instead.
+const PLAYER_REFRESH_KEY = "puttpirates:playersRefreshedAt";
+const PLAYER_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+function playerRefreshDue(): boolean {
+  try {
+    const last = Number(localStorage.getItem(PLAYER_REFRESH_KEY));
+    return !(last > 0) || Date.now() - last >= PLAYER_REFRESH_INTERVAL_MS;
+  } catch {
+    return true; // storage unavailable — keep the old always-refresh behaviour
+  }
+}
+
+function markPlayersRefreshed(): void {
+  try {
+    localStorage.setItem(PLAYER_REFRESH_KEY, String(Date.now()));
+  } catch {
+    /* storage unavailable — we'll just refresh again next launch */
+  }
+}
+
 /**
  * Batch-fetch player docs by id, chunked to Firestore's `in` limit.
  *
  * Cache-first: a batch whose players are all in the on-device cache resolves
  * from IndexedDB immediately (so names don't wait on the network at startup),
- * then `onFresh` gets the server copy in the background. A batch with any id
- * missing from the cache goes to the network as before.
+ * then — at most once a day — `onFresh` gets the server copy in the background.
+ * A batch with any id missing from the cache goes to the network as before.
  */
 async function fetchPlayersByIds(ids: string[], onFresh?: (fresh: PlayerLookup) => void): Promise<PlayerLookup> {
   const out: PlayerLookup = {};
@@ -56,7 +79,14 @@ async function fetchPlayersByIds(ids: string[], onFresh?: (fresh: PlayerLookup) 
       try {
         const cached = toLookup(await getDocsFromCache(q));
         if (batch.every((id) => cached[id])) {
-          if (onFresh) getDocsFromServer(q).then((snap) => onFresh(toLookup(snap))).catch(() => {});
+          if (onFresh && playerRefreshDue()) {
+            getDocsFromServer(q)
+              .then((snap) => {
+                markPlayersRefreshed();
+                onFresh(toLookup(snap));
+              })
+              .catch(() => {});
+          }
           return cached;
         }
       } catch {

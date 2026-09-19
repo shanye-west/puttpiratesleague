@@ -411,6 +411,22 @@ export const updateMatchFacts = onDocumentWritten({ document: "matches/{matchId}
     return;
   }
 
+  // Closed → still closed, and only bookkeeping fields moved (e.g. the
+  // `completed` / `_computeSig` write-back computeMatchOnWrite makes when the
+  // 18th hole lands on an already-decided match): the facts would come out
+  // identical, and rewriting them fans out to a full aggregatePlayerStats
+  // rebuild per player. None of these fields is read below. Anything else —
+  // including `_recalculatedAt` (the recalc tool's touch) and a cleared
+  // `_lastComputed` (round edit) — still regenerates.
+  if (before?.status?.closed === true) {
+    const FACT_NEUTRAL_KEYS = ["completed", "_computeSig", "authorizedUids", "locked"];
+    const changed = [
+      ...Object.keys(after).filter(k => JSON.stringify(after[k]) !== JSON.stringify(before[k])),
+      ...Object.keys(before).filter(k => after[k] === undefined),
+    ];
+    if (changed.every(k => FACT_NEUTRAL_KEYS.includes(k))) return;
+  }
+
   const tId = after.tournamentId || "";
   const rId = after.roundId || "";
 
@@ -1289,9 +1305,16 @@ export const updateMatchFacts = onDocumentWritten({ document: "matches/{matchId}
 // SKINS COMPUTATION
 // Computes hole-by-hole skins data for the entire round when any match updates
 // Stores pre-computed results in rounds/{roundId}/skinsResults/computed
+//
+// NOT DEPLOYED (Putt Pirates): skins are a hidden Cup-only feature, and league
+// rounds carry no courseId/skins pot, so this could never produce a result —
+// yet as a live trigger it cost a round read on every score write. Kept
+// un-exported (like askRulesOfficial) rather than deleted; re-add `export` to
+// bring it back.
 // ============================================================================
 
-export const computeRoundSkins = onDocumentWritten("matches/{matchId}", withTriggerLogging("computeRoundSkins", async (event) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const computeRoundSkins =onDocumentWritten("matches/{matchId}", withTriggerLogging("computeRoundSkins", async (event) => {
   const after = event.data?.after?.data();
   const before = event.data?.before?.data();
 
@@ -1957,37 +1980,42 @@ export const aggregatePlayerStats = onDocumentWritten({ document: "playerMatchFa
   // an execution died between them; one batch keeps the player's stats coherent.
   const batch = db.batch();
 
-  // Aggregate by series
-  const seriesSnap = await db.collection("playerMatchFacts")
+  // One query for every fact of this player, then each scope is filtered in
+  // memory. The series/tournament/round result sets overlap almost entirely
+  // (a league season is one series), so three separate queries read most of
+  // the player's facts two or three times over. Filtering preserves the
+  // queries' document-id order, so buildStatsFromFacts sees the same input.
+  const playerFactsSnap = await db.collection("playerMatchFacts")
     .where("playerId", "==", playerId)
-    .where("tournamentSeries", "==", series)
     .get();
+  const factsWhere = (field: string, value: string) =>
+    playerFactsSnap.docs.filter(d => d.data()[field] === value);
+
+  // Aggregate by series
+  const seriesFacts = factsWhere("tournamentSeries", series);
 
   const seriesStatsRef = db.collection("playerStats").doc(playerId)
     .collection("bySeries").doc(series);
 
-  if (seriesSnap.empty) {
+  if (seriesFacts.length === 0) {
     batch.delete(seriesStatsRef);
   } else {
-    const seriesStats = buildStatsFromFacts(seriesSnap.docs, "series", series);
+    const seriesStats = buildStatsFromFacts(seriesFacts, "series", series);
     seriesStats.displayName = displayName;
     batch.set(seriesStatsRef, seriesStats);
   }
 
   // Aggregate by tournament
   if (tournamentId) {
-    const tournamentSnap = await db.collection("playerMatchFacts")
-      .where("playerId", "==", playerId)
-      .where("tournamentId", "==", tournamentId)
-      .get();
+    const tournamentFacts = factsWhere("tournamentId", tournamentId);
 
     const tournamentStatsRef = db.collection("playerStats").doc(playerId)
       .collection("byTournament").doc(tournamentId);
 
-    if (tournamentSnap.empty) {
+    if (tournamentFacts.length === 0) {
       batch.delete(tournamentStatsRef);
     } else {
-      const tournamentStats = buildStatsFromFacts(tournamentSnap.docs, "tournamentId", tournamentId);
+      const tournamentStats = buildStatsFromFacts(tournamentFacts, "tournamentId", tournamentId);
       tournamentStats.displayName = displayName;
       batch.set(tournamentStatsRef, tournamentStats);
     }
@@ -1995,18 +2023,15 @@ export const aggregatePlayerStats = onDocumentWritten({ document: "playerMatchFa
 
   // Aggregate by round
   if (roundId) {
-    const roundSnap = await db.collection("playerMatchFacts")
-      .where("playerId", "==", playerId)
-      .where("roundId", "==", roundId)
-      .get();
+    const roundFacts = factsWhere("roundId", roundId);
 
     const roundStatsRef = db.collection("playerStats").doc(playerId)
       .collection("byRound").doc(roundId);
 
-    if (roundSnap.empty) {
+    if (roundFacts.length === 0) {
       batch.delete(roundStatsRef);
     } else {
-      const roundStats = buildStatsFromFacts(roundSnap.docs, "roundId", roundId);
+      const roundStats = buildStatsFromFacts(roundFacts, "roundId", roundId);
       roundStats.displayName = displayName;
       batch.set(roundStatsRef, roundStats);
     }
