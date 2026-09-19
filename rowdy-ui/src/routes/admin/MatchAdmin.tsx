@@ -114,7 +114,9 @@ export default function MatchAdmin() {
 
   const handleToggleLock = (next: boolean) =>
     runAction(async () => {
-      await adminApi.setMatchLock({ matchId, locked: next });
+      const res = await adminApi.setMatchLock({ matchId, locked: next });
+      if (res.roundLocked === true) return "Match locked — every match this month is now locked, so the month is too.";
+      if (res.roundLocked === false) return "Match unlocked, and its month reopened so players can fix the card.";
       return next ? "Match locked." : "Match unlocked.";
     });
 
@@ -432,7 +434,7 @@ export default function MatchAdmin() {
         )}
       </AdminSection>
 
-      <AdminSection title="Match lock" description="A locked match refuses score entry from players. The round lock covers every match at once.">
+      <AdminSection title="Match lock" description="A match locks itself once its card is finished (or its result is entered), and the month locks when all its matches are. Unlock here to let players fix a card — it stays unlocked until you lock it again.">
         <ToggleRow
           label="Locked"
           description={

@@ -10,6 +10,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { requireAdmin } from "../helpers/adminAuth.js";
 import { countScoredHoles } from "../helpers/matchHelpers.js";
 import { validateManualResult } from "../helpers/manualResult.js";
+import { setMatchLockAndSyncRound } from "../helpers/matchLock.js";
 import type { RoundFormat } from "../types.js";
 
 function db() {
@@ -65,7 +66,12 @@ export const adminSetMatchResult = onCall(async (request) => {
   return { success: true, matchId, manualResult: manual };
 });
 
-/** Data payload: { matchId } — reopens the match (facts are deleted by the reopen path). */
+/**
+ * Data payload: { matchId } — reopens the match (facts are deleted by the reopen
+ * path). The result auto-locked the match (autoLockOnFinish), so unlock it — and
+ * its month, when that was only locked because this match was — so it can be
+ * scored or given a new result.
+ */
 export const adminClearMatchResult = onCall(async (request) => {
   await requireAdmin(request, "adminClearMatchResult", { maxCalls: 60, windowSeconds: 60 });
 
@@ -80,6 +86,9 @@ export const adminClearMatchResult = onCall(async (request) => {
     manualResult: FieldValue.delete(),
     _computeSig: FieldValue.delete(),
   });
+  if (snap.data()?.locked === true) {
+    await setMatchLockAndSyncRound(matchRef, false, { _adminUpdatedAt: FieldValue.serverTimestamp() });
+  }
 
   return { success: true, matchId };
 });

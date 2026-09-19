@@ -33,6 +33,7 @@ import {
 } from "./helpers/matchHelpers.js";
 import { buildManualStatusAndResult, computeSig, usesManualResult, validateManualResult } from "./helpers/manualResult.js";
 import { matchPlayerIds } from "./helpers/roster.js";
+import { justFinished, setMatchLockAndSyncRound } from "./helpers/matchLock.js";
 import {
   summarize,
   buildStatusAndResult,
@@ -155,6 +156,23 @@ export const generateRoundRecapOnLock = onDocumentWritten({ document: "rounds/{r
   if (event.data?.before?.data()?.locked === true) return;
 
   await regenerateRoundRecapIfLocked(event.params.roundId);
+}));
+
+/**
+ * League matches lock themselves: once a card is finished (closed with every
+ * hole in — computeMatchOnWrite's `completed`) or an admin-entered result closes
+ * it, the match locks, and when that leaves every match in the month locked the
+ * month locks too (which publishes its recap via generateRoundRecapOnLock).
+ * Edge-triggered on the finishing write only, so an admin unlock afterwards
+ * sticks until the admin locks it again.
+ */
+export const autoLockOnFinish = onDocumentWritten({ document: "matches/{matchId}", retry: true }, withTriggerLogging("autoLockOnFinish", async (event) => {
+  const after = event.data?.after;
+  if (!after?.exists) return;
+  if (!justFinished(event.data?.before?.data(), after.data())) return;
+
+  const monthLocked = await setMatchLockAndSyncRound(after.ref, true, { _autoLockedAt: FieldValue.serverTimestamp() });
+  logger.info(`autoLockOnFinish: locked ${event.params.matchId}${monthLocked ? ` and round ${after.data()?.roundId}` : ""}`);
 }));
 
 export const linkRoundToTournament = onDocumentWritten("rounds/{roundId}", async (event) => {
@@ -419,7 +437,7 @@ export const updateMatchFacts = onDocumentWritten({ document: "matches/{matchId}
   // including `_recalculatedAt` (the recalc tool's touch) and a cleared
   // `_lastComputed` (round edit) — still regenerates.
   if (before?.status?.closed === true) {
-    const FACT_NEUTRAL_KEYS = ["completed", "_computeSig", "authorizedUids", "locked"];
+    const FACT_NEUTRAL_KEYS = ["completed", "_computeSig", "authorizedUids", "locked", "_autoLockedAt", "_adminUpdatedAt"];
     const changed = [
       ...Object.keys(after).filter(k => JSON.stringify(after[k]) !== JSON.stringify(before[k])),
       ...Object.keys(before).filter(k => after[k] === undefined),

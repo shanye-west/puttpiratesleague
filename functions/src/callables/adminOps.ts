@@ -10,6 +10,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { requireAdmin } from "../helpers/adminAuth.js";
+import { setMatchLockAndSyncRound } from "../helpers/matchLock.js";
 import { isValidGross } from "../scoring/matchScoring.js";
 import {
   describeRoundDeletionBlock,
@@ -620,7 +621,11 @@ export const deleteRound = onCall(async (request) => {
 
 /**
  * Lock or unlock a single match. Round.locked covers the whole round; this
- * covers one match (e.g. a disputed scorecard while the rest stay editable).
+ * covers one match (e.g. a typo on a card that auto-locked when finished).
+ * The month follows along: locking its last open match locks it, and unlocking
+ * a match reopens a month whose other matches are all locked (see
+ * helpers/matchLock.ts). An unlock sticks — autoLockOnFinish only fires on the
+ * write that finishes a card.
  *
  * Data payload:
  * - matchId: string
@@ -641,8 +646,8 @@ export const setMatchLock = onCall(async (request) => {
     throw new HttpsError("not-found", "Match not found");
   }
 
-  await ref.set({ locked, _adminUpdatedAt: FieldValue.serverTimestamp() }, { merge: true });
-  return { success: true, matchId, locked };
+  const roundLocked = await setMatchLockAndSyncRound(ref, locked, { _adminUpdatedAt: FieldValue.serverTimestamp() });
+  return { success: true, matchId, locked, roundLocked };
 });
 
 /**

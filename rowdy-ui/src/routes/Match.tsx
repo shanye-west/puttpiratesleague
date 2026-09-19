@@ -1005,6 +1005,15 @@ export default function Match() {
           </div>
         )}
 
+        {/* LEAGUE: cards lock themselves once finished (autoLockOnFinish) */}
+        {isLeague && !isManualResult && !needsSetup && canEdit && (
+          <p className="text-center text-xs text-muted-foreground">
+            {matchLocked || roundLocked
+              ? "This card is locked. Ask an admin if a score needs fixing."
+              : "Your card locks as soon as all 18 holes are in — double-check your scores before entering the last one."}
+          </p>
+        )}
+
         {/* NOTE: no sync-state badge here on purpose. It sat in normal flow
             above the scorecard, so every save pushed the card down and popped it
             back up ~2.5s later — a visible jitter while entering scores. The

@@ -273,6 +273,8 @@ export interface SetMatchLockRequest {
 export interface SetMatchLockResult extends AdminResult {
   matchId: string;
   locked: boolean;
+  /** The month's new lock state when this call changed it, else null. */
+  roundLocked?: boolean | null;
 }
 
 export interface AdminOverrideHoleScoreRequest {
