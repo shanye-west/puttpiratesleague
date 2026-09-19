@@ -17,7 +17,6 @@ import {
   Player,
   Round,
   RoundRecap,
-  Season,
   Sportsbook,
   Teams,
   Tournament,
@@ -68,7 +67,8 @@ const router = createBrowserRouter(
         { path: "round/:roundId/recap", element: <RoundRecap /> },
         { path: "match/:matchId", element: <Match /> },
         { path: "matches", element: <Matches /> },
-        { path: "season", element: <Season /> },
+        // The Season tab folded into Matches (its month chips are the calendar).
+        { path: "season", element: <Navigate to="/matches" replace /> },
         // The standings ARE the home page; keep the path working for old links.
         { path: "standings", element: <Navigate to="/" replace /> },
         { path: "teams", element: <Teams /> },

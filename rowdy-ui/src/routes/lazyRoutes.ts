@@ -11,7 +11,6 @@ export const Round = lazyWithRecovery(() => import("./Round"));
 export const RoundRecap = lazyWithRecovery(() => import("./RoundRecap"));
 export const Teams = lazyWithRecovery(() => import("./Teams"));
 export const Matches = lazyWithRecovery(() => import("./Matches"));
-export const Season = lazyWithRecovery(() => import("./Season"));
 export const Leaderboard = lazyWithRecovery(() => import("./Leaderboard"));
 export const Sportsbook = lazyWithRecovery(() => import("./Sportsbook"));
 export const Chat = lazyWithRecovery(() => import("./Chat"));

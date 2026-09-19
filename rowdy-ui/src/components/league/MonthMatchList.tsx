@@ -13,8 +13,14 @@ interface Props {
   leagueTeams: LeagueTeam[];
   nameOf: (pid: string) => string;
   shortNameOf: (pid: string) => string;
-  /** Show a "needs setup" chip on matches without a course/strokes yet. */
-  showSetupHint?: boolean;
+  /**
+   * Show a "needs setup" chip on matches without a course/strokes yet.
+   * `"mine"`: only on `highlightPlayerId`'s match — setting it up is that
+   * player's job, so on everyone else's cards the hint is noise.
+   */
+  showSetupHint?: boolean | "mine";
+  /** The viewer: their match gets a primary ring and a "Your match" line. */
+  highlightPlayerId?: string;
   /** Round page: the hole-by-hole tracker under each card (not for result-only matches). */
   showTracker?: boolean;
   format?: string | null;
@@ -32,6 +38,7 @@ export const MonthMatchList = memo(function MonthMatchList({
   showSetupHint = true,
   showTracker = false,
   format = "singles",
+  highlightPlayerId,
 }: Props) {
   if (matches.length === 0) {
     return (
@@ -51,6 +58,11 @@ export const MonthMatchList = memo(function MonthMatchList({
         const onColored = textColor === "text-white";
         const needsSetup = !match.courseId && !match.manualResult && match.status?.closed !== true;
         const isManual = !!match.manualResult && match.status?.closed === true;
+        const isMine = !!highlightPlayerId && (aId === highlightPlayerId || bId === highlightPlayerId);
+        const setupHint = needsSetup && (showSetupHint === "mine" ? isMine : showSetupHint);
+        const note = [isMine && "Your match", isManual ? "Result entered by admin" : setupHint && "Tap to set course & strokes"]
+          .filter(Boolean)
+          .join(" · ");
         return (
           <div key={match.id} role="listitem">
             <ViewTransitionLink
@@ -58,7 +70,10 @@ export const MonthMatchList = memo(function MonthMatchList({
               aria-label={`Match: ${shortNameOf(aId)} vs ${shortNameOf(bId)}`}
               className="card-link-hover block"
             >
-              <Card className="overflow-hidden border-border/70" style={{ ...bgStyle, ...borderStyle }}>
+              <Card
+                className={cn("overflow-hidden border-border/70", isMine && "ring-2 ring-primary/70 ring-offset-2 ring-offset-background")}
+                style={{ ...bgStyle, ...borderStyle }}
+              >
                 <CardContent className="space-y-2 py-3">
                   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                     <div className={cn("flex min-w-0 items-center gap-1.5 text-sm leading-tight", textColor)}>
@@ -86,11 +101,11 @@ export const MonthMatchList = memo(function MonthMatchList({
                       <span className="min-w-0 truncate font-semibold">{shortNameOf(bId)}</span>
                     </div>
                   </div>
-                  {(showSetupHint && needsSetup) || isManual ? (
+                  {note && (
                     <div className={cn("text-center text-[0.6rem] font-semibold uppercase tracking-wider", onColored ? "text-white/80" : "text-muted-foreground")}>
-                      {isManual ? "Result entered by admin" : "Tap to set course & strokes"}
+                      {note}
                     </div>
-                  ) : null}
+                  )}
                 </CardContent>
               </Card>
             </ViewTransitionLink>

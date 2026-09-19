@@ -18,7 +18,6 @@ import {
   Player,
   Round,
   RoundRecap,
-  Season,
   Sportsbook,
   Teams,
   Tournament,
@@ -29,7 +28,6 @@ const PREFETCHERS: Array<[RegExp, () => Promise<unknown>]> = [
   [/^\/match\//, Match.preload],
   [/^\/round\/[^/]+\/recap/, RoundRecap.preload],
   [/^\/round\//, Round.preload],
-  [/^\/season/, Season.preload],
   [/^\/teams/, Teams.preload],
   [/^\/leaderboard/, Leaderboard.preload],
   [/^\/sportsbook/, Sportsbook.preload],
@@ -55,7 +53,7 @@ export function prefetchRoute(path: string): void {
 }
 
 /** The bottom-nav tabs plus the pages most often opened from them. */
-const IDLE_WARM_PATHS = ["/matches", "/season", "/match/", "/round/", "/sportsbook", "/chat", "/player/"];
+const IDLE_WARM_PATHS = ["/matches", "/match/", "/round/", "/sportsbook", "/chat", "/player/"];
 
 /**
  * Once the app has settled after launch, warm the chunks of the main tabs so

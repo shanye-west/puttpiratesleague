@@ -20,8 +20,8 @@ import { isLeagueTournament } from "./utils/leagueTeams";
 /**
  * Home. A league season (the Putt Pirates default — the tournament has
  * `leagueTeams`) opens on the standings: the individual table with the playoff
- * line, the team table, and the team × month grid. Matches to play live on
- * their own tab (`/matches`). A tournament without league teams falls back to
+ * line, the team table, and the team × month grid. The season's matches,
+ * month by month, live on their own tab (`/matches`). A tournament without league teams falls back to
  * the original two-sided Cup scoreboard.
  */
 export default function App() {
@@ -76,7 +76,7 @@ export default function App() {
   if (isLeague) {
     return (
       <Layout title={tName} series={tSeries} tournamentLogo={tLogo}>
-        <LeagueStandingsView tournament={tournament} showPlayCta />
+        <LeagueStandingsView tournament={tournament} showPlayCta showPastSeasons />
       </Layout>
     );
   }

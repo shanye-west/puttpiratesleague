@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import LastUpdated from "../LastUpdated";
 import LoadingScreen from "../LoadingScreen";
 import { ViewTransitionLink } from "../ViewTransitionLink";
+import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import { useAuth } from "../../contexts/AuthContext";
 import { fmtPts } from "../../utils/leagueStandings";
@@ -14,16 +15,19 @@ import type { TournamentDoc } from "../../types";
 /**
  * The standings body (the app's home for a league season). `withSeasonList`
  * adds the month calendar (used for a past season); `showPlayCta` adds the
- * link through to the matches still to be played.
+ * link through to the matches still to be played; `showPastSeasons` a link to
+ * the archive.
  */
 export default function LeagueStandingsView({
   tournament,
   withSeasonList = false,
   showPlayCta = false,
+  showPastSeasons = false,
 }: {
   tournament: TournamentDoc;
   withSeasonList?: boolean;
   showPlayCta?: boolean;
+  showPastSeasons?: boolean;
 }) {
   const { player } = useAuth();
   const season = useLeagueSeason(tournament);
@@ -72,6 +76,13 @@ export default function LeagueStandingsView({
       <TeamStandingsTable standings={standings} leagueTeams={leagueTeams} nameOf={nameOf} />
       <TeamMonthGrid standings={standings} leagueTeams={leagueTeams} rounds={rounds} />
       {withSeasonList && <LeagueSeasonList season={season} tournament={tournament} />}
+      {showPastSeasons && (
+        <div className="flex justify-center">
+          <Button asChild variant="ghost" size="sm">
+            <ViewTransitionLink to="/history">Past seasons</ViewTransitionLink>
+          </Button>
+        </div>
+      )}
       <div>
         <LastUpdated />
       </div>

@@ -2,13 +2,14 @@ import { memo } from "react";
 import { Navigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import LoadingScreen from "../components/LoadingScreen";
-import LeagueHome from "../components/league/LeagueHome";
+import LeagueMatches from "../components/league/LeagueMatches";
 import { useTournamentContext } from "../contexts/TournamentContext";
 import { isLeagueTournament } from "../utils/leagueTeams";
 
 /**
- * Matches tab: what's left to play this season, grouped by month, plus the
- * most recent results. The season's standings are the app's home page (`/`).
+ * Matches tab: the season month by month — pick a month, see its team battle
+ * and its matches. It is also the season calendar (the old Season tab). The
+ * standings are the app's home page (`/`).
  */
 function MatchesComponent() {
   const { tournament, loading } = useTournamentContext();
@@ -17,7 +18,7 @@ function MatchesComponent() {
   if (!tournament || !isLeagueTournament(tournament)) return <Navigate to="/" replace />;
   return (
     <Layout title="Matches" series={tournament.series} tournamentLogo={tournament.tournamentLogo}>
-      <LeagueHome tournament={tournament} />
+      <LeagueMatches tournament={tournament} />
     </Layout>
   );
 }

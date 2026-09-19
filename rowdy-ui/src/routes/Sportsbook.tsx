@@ -31,6 +31,8 @@ import { teeTimeToMillis, formatTeeTime, formatRoundType } from "../utils";
 import ConfirmDialog from "../components/admin/ConfirmDialog";
 import BetMatchup, { type MatchupSide } from "../components/BetMatchup";
 import SportsbookHowTo from "../components/SportsbookHowTo";
+import MonthPicker from "../components/MonthPicker";
+import { shortRoundLabel } from "../utils/months";
 import CaptainsBetSheet from "../components/CaptainsBetSheet";
 import LeagueBetSheet, { type LeagueBetMode, type SeasonPlayer } from "../components/LeagueBetSheet";
 import { computeLeagueStandings } from "../utils/leagueStandings";
@@ -850,7 +852,7 @@ export default function Sportsbook() {
                         months={matchMonths.map((g) => ({
                           id: g.round.id,
                           label: shortRoundLabel(g.round),
-                          offers:
+                          count:
                             g.matches.reduce((n, m) => n + matchOfferCount(m.id), 0) +
                             (isLeague && g.teamBattleOpen ? teamBattleOffers(g.round.id).length : 0),
                         }))}
@@ -1418,64 +1420,6 @@ function BetGroup({
       <SectionLabel trailing={trailing}>{title}</SectionLabel>
       <div className="space-y-3">{children}</div>
     </section>
-  );
-}
-
-const MONTH_NAMES = [
-  "january", "february", "march", "april", "may", "june",
-  "july", "august", "september", "october", "november", "december",
-];
-/** A month chip's label: "September" → "Sep"; other round names pass through. */
-function shortRoundLabel(r: RoundDoc): string {
-  const name = r.name?.trim() || (r.day ? `Round ${r.day}` : "Round");
-  return MONTH_NAMES.includes(name.toLowerCase()) ? name.slice(0, 3) : name;
-}
-
-/**
- * The Open Bets month selector: one chip per month that still has bettable
- * matches. A chip carries a small count when offers are waiting in that month,
- * so action in a later month isn't hidden behind an unselected chip.
- * Scrolls sideways if a season has more months than fit.
- */
-function MonthPicker({
-  months,
-  selectedId,
-  onSelect,
-}: {
-  months: { id: string; label: string; offers: number }[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="flex w-max gap-2" role="tablist" aria-label="Month">
-        {months.map((mo) => {
-          const active = mo.id === selectedId;
-          return (
-            <button
-              key={mo.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => onSelect(mo.id)}
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                active ? "bg-foreground text-background" : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {mo.label}
-              {mo.offers > 0 && (
-                <span
-                  className="rounded-full bg-emerald-500 px-1.5 text-[0.6rem] font-bold leading-4 text-white tabular-nums"
-                  aria-label={`${mo.offers} open`}
-                >
-                  {mo.offers}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 

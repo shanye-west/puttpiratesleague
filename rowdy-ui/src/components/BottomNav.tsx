@@ -1,5 +1,5 @@
 import { useLocation } from "react-router-dom";
-import { Flag, Trophy, CalendarDays, DollarSign, MessageCircle } from "lucide-react";
+import { Flag, Trophy, DollarSign, MessageCircle } from "lucide-react";
 import { ViewTransitionLink } from "./ViewTransitionLink";
 import { useNotifications } from "../contexts/NotificationsContext";
 
@@ -13,8 +13,8 @@ type Tab = {
   badgePrefix?: string;
 };
 
-// League flow: where everyone stands → what's left to play → the calendar → bets → chat.
-// Team rosters live in the hamburger menu.
+// League flow: where everyone stands → the season's matches, month by month → bets → chat.
+// Team rosters and past seasons live in the hamburger menu.
 const TABS: Tab[] = [
   {
     // The standings are the app's home page.
@@ -22,21 +22,22 @@ const TABS: Tab[] = [
     label: "Standings",
     Icon: Trophy,
     isActive: (p) =>
-      p === "/" || p.startsWith("/standings") || p.startsWith("/teams") || p.startsWith("/player") || p.startsWith("/leaderboard"),
+      p === "/" ||
+      p.startsWith("/standings") ||
+      p.startsWith("/teams") ||
+      p.startsWith("/player") ||
+      p.startsWith("/leaderboard") ||
+      p.startsWith("/history") ||
+      p.startsWith("/tournament"),
   },
   {
     to: "/matches",
     label: "Matches",
     Icon: Flag,
-    isActive: (p) => p.startsWith("/match"),
+    // A month's page (/round/…) is part of the Matches tab.
+    isActive: (p) => p.startsWith("/match") || p.startsWith("/round") || p.startsWith("/season"),
     // Badge match results / lead changes (they deep-link to /match/…).
     badgePrefix: "/match",
-  },
-  {
-    to: "/season",
-    label: "Season",
-    Icon: CalendarDays,
-    isActive: (p) => p.startsWith("/season") || p.startsWith("/round") || p.startsWith("/history") || p.startsWith("/tournament"),
   },
   {
     to: "/sportsbook",

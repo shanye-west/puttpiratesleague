@@ -20,8 +20,9 @@ import PlayerAvatar from "../components/PlayerAvatar";
 import { MatchStatusBadge, getMatchCardStyles } from "../components/MatchStatusBadge";
 import { HoleByHoleTracker } from "../components/HoleByHoleTracker";
 import { MonthMatchList } from "../components/league/MonthMatchList";
-import { isLeagueTournament, leagueTeamColor } from "../utils/leagueTeams";
-import { computeLeagueStandings, fmtPts } from "../utils/leagueStandings";
+import { MonthTeamPoints } from "../components/league/MonthTeamPoints";
+import { isLeagueTournament } from "../utils/leagueTeams";
+import { computeLeagueStandings } from "../utils/leagueStandings";
 import { RoundPageSkeleton } from "../components/Skeleton";
 // Badge removed from this file (was used for matches pill)
 import { Button } from "../components/ui/button";
@@ -149,7 +150,6 @@ function RoundComponent() {
   const monthStandings = isLeague
     ? computeLeagueStandings({ rounds: [round], matchesByRound: { [round.id]: matches }, leagueTeams, prior: tournament?.priorStandings ?? null })
     : null;
-  const monthBonusInfo = monthStandings?.bonusByRound[round.id];
   const playedCount = matches.filter((m) => m.status?.closed === true).length;
 
   return (
@@ -194,38 +194,7 @@ function RoundComponent() {
               </div>
 
               {isLeague && monthStandings ? (
-                <div className="rounded-xl border border-border/70 bg-card/80 p-3">
-                  <div className="mb-2 flex items-center justify-between text-[0.6rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                    <span>Team points this month</span>
-                    <span>
-                      {monthBonusInfo?.teamId
-                        ? `Bonus: ${leagueTeams.find((t) => t.id === monthBonusInfo.teamId)?.name ?? ""}`
-                        : monthBonusInfo?.pending
-                          ? monthBonusInfo.reason === "captainNetUnavailable" ? "Bonus: captains' card-off TBD" : "Bonus: pending"
-                          : ""}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {monthStandings.teams.map((row) => {
-                      const team = leagueTeams.find((t) => t.id === row.teamId);
-                      const cell = monthStandings.grid[row.teamId]?.[round.id];
-                      const color = leagueTeamColor(team, leagueTeams);
-                      const projected = (cell?.projectedPoints ?? 0) - (cell?.points ?? 0);
-                      return (
-                        <div key={row.teamId} className="flex items-center justify-between gap-2 rounded-lg bg-muted/50 px-2.5 py-1.5">
-                          <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-foreground">
-                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
-                            <span className="truncate">{team?.name ?? row.teamId}</span>
-                          </span>
-                          <span className="text-sm font-bold tabular-nums" style={{ color }}>
-                            {fmtPts(cell?.points ?? 0)}{cell?.bonus ? " + 1" : ""}
-                            {projected > 0 && <span className="ml-1 text-[0.6rem] font-semibold text-muted-foreground">(+{fmtPts(projected)})</span>}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <MonthTeamPoints standings={monthStandings} leagueTeams={leagueTeams} roundId={round.id} />
               ) : (
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl border border-border/70 bg-card/80 p-4">
                 <div className="flex flex-col items-center gap-1">
