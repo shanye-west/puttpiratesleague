@@ -1,8 +1,10 @@
 /**
  * League "Set up match" panel (Putt Pirates): the two players pick the course
- * they're playing and type their course handicaps for the day; the server
- * gives the higher handicap the difference on the hardest holes. Shown on the
- * match page until the card is set up, then as a one-line summary.
+ * and tees they're playing and type their GHIN Handicap Indexes; the server
+ * turns each into a course handicap from the tees' rating/slope/par and gives
+ * the higher one the difference on the hardest holes. The panel previews the
+ * same numbers. Shown on the match page until the card is set up, then as a
+ * one-line summary.
  *
  * Players can re-run it until a score is entered; after that only an admin can.
  *
@@ -21,6 +23,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { matchApi } from "../../api/match";
 import { getErrorMessage } from "../../api/errors";
 import { allocateStrokes } from "../../utils/captainsMatchScoring";
+import { courseHandicapForTees, formatHandicapIndex, parseHandicapIndex } from "../../utils/ghin";
 import type { CourseDoc, MatchDoc } from "../../types";
 
 interface Props {
@@ -44,6 +47,11 @@ const inputClass =
 const NEW_COURSE = "__new_course__";
 const NEW_TEES = "__new_tees__";
 
+const TEES_INCOMPLETE = "These tees are missing their rating, slope or par — ask an admin to fill them in.";
+
+/** A course handicap the way GHIN shows it: "+2" for a plus handicap. */
+const fmtCh = (ch: number) => (ch < 0 ? `+${-ch}` : String(ch));
+
 /** Courses grouped by name (one <optgroup> per course, one <option> per tees). */
 function groupByName(courses: CourseDoc[]): { name: string; items: CourseDoc[] }[] {
   const groups = new Map<string, { name: string; items: CourseDoc[] }>();
@@ -56,6 +64,12 @@ function groupByName(courses: CourseDoc[]): { name: string; items: CourseDoc[] }
   return [...groups.values()];
 }
 
+/** The stored index for a side, as the input shows it ("" before setup). */
+function indexText(handicapIndexes: number[] | undefined, i: number): string {
+  const hi = handicapIndexes?.[i];
+  return hi != null ? formatHandicapIndex(hi) : "";
+}
+
 export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, nameOf, onSaved, defaultOpen }: Props) {
   const aId = match.teamAPlayers?.[0]?.playerId ?? "";
   const bId = match.teamBPlayers?.[0]?.playerId ?? "";
@@ -66,8 +80,8 @@ export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, n
   const { showToast } = useToast();
 
   const [courseId, setCourseId] = useState(match.courseId ?? "");
-  const [hcpA, setHcpA] = useState(match.courseHandicaps?.[0] != null ? String(match.courseHandicaps[0]) : "");
-  const [hcpB, setHcpB] = useState(match.courseHandicaps?.[1] != null ? String(match.courseHandicaps[1]) : "");
+  const [hiA, setHiA] = useState(indexText(match.handicapIndexes, 0));
+  const [hiB, setHiB] = useState(indexText(match.handicapIndexes, 1));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Non-null while the inline "add course / add tees" form is open. */
@@ -76,9 +90,9 @@ export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, n
   // Keep the form in step with the doc (another device may have set it up).
   useEffect(() => {
     setCourseId(match.courseId ?? "");
-    setHcpA(match.courseHandicaps?.[0] != null ? String(match.courseHandicaps[0]) : "");
-    setHcpB(match.courseHandicaps?.[1] != null ? String(match.courseHandicaps[1]) : "");
-  }, [match.courseId, match.courseHandicaps]);
+    setHiA(indexText(match.handicapIndexes, 0));
+    setHiB(indexText(match.handicapIndexes, 1));
+  }, [match.courseId, match.handicapIndexes]);
 
   const course: CourseDoc | undefined = useMemo(() => courses.find((c) => c.id === courseId), [courses, courseId]);
   const courseGroups = useMemo(() => groupByName(courses), [courses]);
@@ -99,15 +113,22 @@ export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, n
     showToast({ variant: "success", message: `${created.name}${created.tees ? ` — ${created.tees}` : ""} added.` });
   };
 
+  const indexA = parseHandicapIndex(hiA);
+  const indexB = parseHandicapIndex(hiB);
+  /** The chosen tees can't produce a course handicap (no rating/slope/par). */
+  const teesIncomplete = !!course && courseHandicapForTees(0, course) === null;
+  // The course handicaps the server will compute for these tees.
+  const chA = course && indexA != null ? courseHandicapForTees(indexA, course) : null;
+  const chB = course && indexB != null ? courseHandicapForTees(indexB, course) : null;
+
   const preview = useMemo(() => {
-    const a = Number(hcpA); const b = Number(hcpB);
-    if (!Number.isInteger(a) || !Number.isInteger(b) || hcpA === "" || hcpB === "") return null;
-    const diff = Math.abs(a - b);
-    const who = a > b ? aId : b > a ? bId : null;
-    const strokes = course ? allocateStrokes(diff, course.holes) : null;
+    if (!course || chA == null || chB == null) return null;
+    const diff = Math.abs(chA - chB);
+    const who = chA > chB ? aId : chB > chA ? bId : null;
+    const strokes = allocateStrokes(diff, course.holes);
     const holes = strokes ? strokes.map((s, i) => (s ? i + 1 : 0)).filter(Boolean) : [];
     return { diff, who, holes };
-  }, [hcpA, hcpB, aId, bId, course]);
+  }, [chA, chB, aId, bId, course]);
 
   const playersLocked = hasScores && !isAdmin;
   const canEditNow = canSetup && !manual && !playersLocked && match.locked !== true;
@@ -116,14 +137,14 @@ export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, n
     e.preventDefault();
     setError(null);
     if (!courseId) { setError("Pick the course you're playing."); return; }
-    const a = Number(hcpA); const b = Number(hcpB);
-    if (hcpA === "" || hcpB === "" || !Number.isInteger(a) || !Number.isInteger(b)) {
-      setError("Enter both course handicaps as whole numbers.");
+    if (teesIncomplete) { setError(TEES_INCOMPLETE); return; }
+    if (indexA == null || indexB == null) {
+      setError("Enter each player's handicap index (e.g. 12.4, or +1.2 for a plus handicap).");
       return;
     }
     setBusy(true);
     try {
-      await matchApi.setupMatchCard({ matchId: match.id, courseId, courseHandicaps: { [aId]: a, [bId]: b } });
+      await matchApi.setupMatchCard({ matchId: match.id, courseId, handicapIndexes: { [aId]: indexA, [bId]: indexB } });
       showToast({ variant: "success", message: "Course and strokes set — you're ready to score." });
       setOpen(false);
       onSaved?.();
@@ -151,7 +172,7 @@ export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, n
                 <span className="font-semibold text-foreground">
                   {course ? `${course.name}${course.tees ? ` — ${course.tees}` : ""}` : "Course set"}
                 </span>
-                {a != null && b != null && <span> · {a} vs {b} · {getter}</span>}
+                {a != null && b != null && <span> · course hcps {fmtCh(a)} vs {fmtCh(b)} · {getter}</span>}
               </>
             ) : (
               <span>Course and strokes not set.</span>
@@ -174,8 +195,9 @@ export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, n
         <div>
           <div className="text-sm font-semibold text-foreground">Set up the match</div>
           <div className="text-xs text-muted-foreground">
-            Pick your course and enter each player's <strong>course handicap</strong> for the tees you're
-            playing (from the GHIN app). The higher handicap gets the difference on the hardest holes.
+            Pick your course and tees, then enter each player's current <strong>Handicap Index</strong> from
+            the GHIN app. Course handicaps are worked out from the tees' rating and slope, and the higher one
+            gets the difference on the hardest holes.
           </div>
         </div>
 
@@ -222,6 +244,15 @@ export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, n
               {!coursesLoading && courses.length === 0 && !creating && (
                 <span className="text-xs text-muted-foreground">No courses yet — add yours from the dropdown.</span>
               )}
+              {course && !creating && (
+                teesIncomplete ? (
+                  <span className="block text-xs text-destructive">{TEES_INCOMPLETE}</span>
+                ) : (
+                  <span className="block text-xs text-muted-foreground">
+                    Rating {course.rating?.toFixed(1)} · Slope {course.slope} · Par {course.par}
+                  </span>
+                )
+              )}
             </label>
             {creating && (
               <CourseCreateForm
@@ -231,23 +262,47 @@ export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, n
                 onCancel={() => setCreating(null)}
               />
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block space-y-1">
-                <span className="block truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">{nameOf(aId)}</span>
-                <input type="number" inputMode="numeric" step="1" min="-10" max="54" value={hcpA} onChange={(e) => setHcpA(e.target.value)} placeholder="Course hcp" className={inputClass} />
-              </label>
-              <label className="block space-y-1">
-                <span className="block truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">{nameOf(bId)}</span>
-                <input type="number" inputMode="numeric" step="1" min="-10" max="54" value={hcpB} onChange={(e) => setHcpB(e.target.value)} placeholder="Course hcp" className={inputClass} />
-              </label>
+            <div className="space-y-1">
+              <span className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Handicap Index</span>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { pid: aId, value: hiA, set: setHiA, ch: chA },
+                  { pid: bId, value: hiB, set: setHiB, ch: chB },
+                ] as const).map(({ pid, value, set, ch }) => (
+                  <label key={pid} className="block space-y-1">
+                    <span className="block truncate text-xs text-muted-foreground">{nameOf(pid)}</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      value={value}
+                      onChange={(e) => set(e.target.value)}
+                      placeholder="e.g. 12.4"
+                      aria-label={`${nameOf(pid)} handicap index`}
+                      className={inputClass}
+                    />
+                    {ch != null && (
+                      <span className="block text-xs text-muted-foreground">
+                        Course hcp <strong className="text-foreground">{fmtCh(ch)}</strong>
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
             </div>
-            {preview && (
+            {preview ? (
               <div className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
                 {preview.diff === 0
-                  ? "Equal handicaps — no strokes either way."
+                  ? "Equal course handicaps — no strokes either way."
                   : `${nameOf(preview.who ?? undefined)} gets ${Math.min(preview.diff, 18)} stroke${preview.diff === 1 ? "" : "s"}` +
-                    (preview.holes.length > 0 ? ` on hole${preview.holes.length === 1 ? "" : "s"} ${preview.holes.join(", ")}.` : course ? "." : " — pick a course to see the holes.")}
+                    (preview.holes.length > 0 ? ` on hole${preview.holes.length === 1 ? "" : "s"} ${preview.holes.join(", ")}.` : ".")}
               </div>
+            ) : (
+              !course && indexA != null && indexB != null && (
+                <div className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                  Pick your course and tees to work out the strokes.
+                </div>
+              )
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex gap-2">

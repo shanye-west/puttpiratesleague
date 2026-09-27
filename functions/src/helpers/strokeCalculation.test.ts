@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeTeamsWithStrokes, computeTeamsWithStrokesFromCourseHandicaps, resolveCourseParams } from "./strokeCalculation";
+import { computeTeamsWithStrokes, resolveCourseParams } from "./strokeCalculation";
 import { calculateCourseHandicap, calculateStrokesReceived } from "../ghin";
 import { DEFAULT_COURSE_PAR } from "../constants";
 
@@ -120,61 +120,52 @@ describe("resolveCourseParams", () => {
   });
 });
 
-describe("computeTeamsWithStrokesFromCourseHandicaps (league singles)", () => {
+describe("computeTeamsWithStrokes (league singles, setupMatchCard)", () => {
   const hardestFirst = [...courseHoles()].sort((a, b) => a.hcpIndex - b.hcpIndex).map((h) => h.number);
+  // Real league tees (rating / slope / par).
+  const angelesBlue = { rating: 72.4, slope: 137, par: 72, holes: courseHoles() };
+  const sanDimasWhite = { rating: 70, slope: 122, par: 72, holes: courseHoles() };
+  const total = (strokes: number[]) => strokes.reduce((s, v) => s + v, 0);
+  const singles = (hiA: number, hiB: number, tees: typeof angelesBlue) =>
+    computeTeamsWithStrokes([{ playerId: "pA", handicapIndex: hiA }], [{ playerId: "pB", handicapIndex: hiB }], tees);
 
-  it("gives the higher handicap the difference on the hardest holes, the lower none", () => {
-    const out = computeTeamsWithStrokesFromCourseHandicaps(
-      [{ playerId: "pA", courseHandicap: 12 }],
-      [{ playerId: "pB", courseHandicap: 7 }],
-      course
-    );
-    expect(out.courseHandicaps).toEqual([12, 7]);
-    expect(out.teamBPlayersWithStrokes[0].strokesReceived.every((s) => s === 0)).toBe(true);
-    const a = out.teamAPlayersWithStrokes[0].strokesReceived;
-    expect(a.reduce((s, v) => s + v, 0)).toBe(5);
-    for (const hole of hardestFirst.slice(0, 5)) expect(a[hole - 1]).toBe(1);
-    for (const hole of hardestFirst.slice(5)) expect(a[hole - 1]).toBe(0);
+  it("turns each index into a course handicap for the tees; the higher gets the difference on the hardest holes", () => {
+    // 7.4 × 137/113 + 0.4 = 9.37 → 9;  12.1 × 137/113 + 0.4 = 15.07 → 15
+    const out = singles(7.4, 12.1, angelesBlue);
+    expect(out.courseHandicaps).toEqual([9, 15]);
+    expect(total(out.teamAPlayersWithStrokes[0].strokesReceived)).toBe(0);
+    const b = out.teamBPlayersWithStrokes[0].strokesReceived;
+    expect(total(b)).toBe(6);
+    for (const hole of hardestFirst.slice(0, 6)) expect(b[hole - 1]).toBe(1);
+    for (const hole of hardestFirst.slice(6)) expect(b[hole - 1]).toBe(0);
   });
 
-  it("gives nobody strokes when handicaps are equal", () => {
-    const out = computeTeamsWithStrokesFromCourseHandicaps(
-      [{ playerId: "pA", courseHandicap: 9 }],
-      [{ playerId: "pB", courseHandicap: 9 }],
-      course
-    );
-    expect(out.teamAPlayersWithStrokes[0].strokesReceived.every((s) => s === 0)).toBe(true);
-    expect(out.teamBPlayersWithStrokes[0].strokesReceived.every((s) => s === 0)).toBe(true);
+  it("gives different strokes for the same indexes on different tees", () => {
+    // 7.4 × 122/113 − 2 = 5.99 → 6;  12.1 × 122/113 − 2 = 11.06 → 11
+    const out = singles(7.4, 12.1, sanDimasWhite);
+    expect(out.courseHandicaps).toEqual([6, 11]);
+    expect(total(out.teamBPlayersWithStrokes[0].strokesReceived)).toBe(5);
+  });
+
+  it("gives nobody strokes when the course handicaps round level", () => {
+    const flat = { rating: 72, slope: 113, par: 72, holes: courseHoles() };
+    const out = singles(10.0, 10.4, flat);
+    expect(out.courseHandicaps).toEqual([10, 10]);
+    expect(total(out.teamAPlayersWithStrokes[0].strokesReceived)).toBe(0);
+    expect(total(out.teamBPlayersWithStrokes[0].strokesReceived)).toBe(0);
+  });
+
+  it("handles a plus index on the low side", () => {
+    // +2.1 → −2.1 × 137/113 + 0.4 = −2.15 → −2;  5.0 → 6.46 → 6
+    const out = singles(-2.1, 5.0, angelesBlue);
+    expect(out.courseHandicaps).toEqual([-2, 6]);
+    expect(total(out.teamAPlayersWithStrokes[0].strokesReceived)).toBe(0);
+    expect(total(out.teamBPlayersWithStrokes[0].strokesReceived)).toBe(8);
   });
 
   it("caps the difference at one stroke per hole (18)", () => {
-    const out = computeTeamsWithStrokesFromCourseHandicaps(
-      [{ playerId: "pA", courseHandicap: 30 }],
-      [{ playerId: "pB", courseHandicap: 4 }],
-      course
-    );
-    expect(out.teamAPlayersWithStrokes[0].strokesReceived.reduce((s, v) => s + v, 0)).toBe(18);
-  });
-
-  it("handles a plus handicap on the low side", () => {
-    const out = computeTeamsWithStrokesFromCourseHandicaps(
-      [{ playerId: "pA", courseHandicap: -2 }],
-      [{ playerId: "pB", courseHandicap: 3 }],
-      course
-    );
-    expect(out.courseHandicaps).toEqual([-2, 3]);
-    expect(out.teamAPlayersWithStrokes[0].strokesReceived.every((s) => s === 0)).toBe(true);
-    expect(out.teamBPlayersWithStrokes[0].strokesReceived.reduce((s, v) => s + v, 0)).toBe(5);
-  });
-
-  it("does not use slope or rating", () => {
-    const a = computeTeamsWithStrokesFromCourseHandicaps(
-      [{ playerId: "pA", courseHandicap: 10 }], [{ playerId: "pB", courseHandicap: 6 }], course
-    );
-    const b = computeTeamsWithStrokesFromCourseHandicaps(
-      [{ playerId: "pA", courseHandicap: 10 }], [{ playerId: "pB", courseHandicap: 6 }],
-      { holes: course.holes }
-    );
-    expect(a).toEqual(b);
+    const out = singles(30, 4, angelesBlue);
+    expect(out.courseHandicaps).toEqual([37, 5]);
+    expect(total(out.teamAPlayersWithStrokes[0].strokesReceived)).toBe(18);
   });
 });

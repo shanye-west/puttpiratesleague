@@ -325,13 +325,18 @@ export interface RecalculateMatchStrokesRequest {
 export interface SetupMatchCardRequest {
   matchId: string;
   courseId: string;
-  /** playerId -> integer course handicap for the day (every player in the match). */
-  courseHandicaps: Record<string, number>;
+  /**
+   * playerId -> GHIN Handicap Index (every player in the match; a plus
+   * handicap is negative). The server derives course handicaps from the tees.
+   */
+  handicapIndexes: Record<string, number>;
 }
 
 export interface SetupMatchCardResult extends AdminResult {
   matchId: string;
-  /** Positional, match order [teamA..., teamB...]. */
+  /** Positional, match order [teamA..., teamB...]: the indexes as stored. */
+  handicapIndexes: number[];
+  /** Positional, match order [teamA..., teamB...]: computed for the tees. */
   courseHandicaps: number[];
   /** playerId -> 18-element 0/1 strokes array actually written. */
   strokesReceived: Record<string, number[]>;

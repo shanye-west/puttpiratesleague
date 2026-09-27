@@ -438,6 +438,9 @@ export type MatchDoc = {
   teamAPlayers?: { playerId: string; strokesReceived: number[] }[];
   teamBPlayers?: { playerId: string; strokesReceived: number[] }[];
   courseHandicaps?: number[]; // Course handicaps for all players in match order [teamA..., teamB...]
+  // LEAGUE: the GHIN Handicap Indexes entered at "Set up match", same order as
+  // courseHandicaps (which the server derives from them and the tees).
+  handicapIndexes?: number[];
   // Auth uids allowed to write `holes` (server-derived from the players' authUid).
   authorizedUids?: string[];
   // Denormalized player ids from both sides (server-maintained; array-contains queries).

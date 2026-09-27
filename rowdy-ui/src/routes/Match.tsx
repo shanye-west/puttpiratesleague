@@ -1359,6 +1359,7 @@ export default function Match() {
             round={round}
             getPlayerName={getPlayerName}
             getCourseHandicapFor={getCourseHandicapFor}
+            showSkins={!isLeague}
           />
         )}
 

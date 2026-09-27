@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Modal } from "../Modal";
+import { formatHandicapIndex } from "../../utils/ghin";
 import type { MatchDoc, TournamentDoc, RoundDoc, CourseDoc } from "../../types";
 
 type StrokesInfoModalProps = {
@@ -11,6 +12,8 @@ type StrokesInfoModalProps = {
   round: RoundDoc | null;
   getPlayerName: (playerId: string | undefined) => string;
   getCourseHandicapFor: (team: "A" | "B", pIdx: number) => number | null;
+  /** Show the Cup's skins-strokes column (off in the league — no skins). */
+  showSkins?: boolean;
 };
 
 export function StrokesInfoModal({
@@ -22,6 +25,7 @@ export function StrokesInfoModal({
   round,
   getPlayerName,
   getCourseHandicapFor,
+  showSkins = true,
 }: StrokesInfoModalProps) {
   const [defTooltip, setDefTooltip] = useState<{ key: string; x: number; y: number } | null>(null);
 
@@ -40,9 +44,12 @@ export function StrokesInfoModal({
     }
   };
 
-  // Helper to get handicap index for a player
+  // Helper to get handicap index for a player: the one entered at league
+  // match setup (positional, like courseHandicaps), else the tournament map.
+  const matchPlayerIds = [...(match.teamAPlayers ?? []), ...(match.teamBPlayers ?? [])].map((p) => p.playerId);
   const getHandicapIndex = (playerId: string): number | null => {
-    return tournament?.teamA?.handicapByPlayer?.[playerId] ?? 
+    return match.handicapIndexes?.[matchPlayerIds.indexOf(playerId)] ??
+           tournament?.teamA?.handicapByPlayer?.[playerId] ?? 
            tournament?.teamB?.handicapByPlayer?.[playerId] ?? 
            null;
   };
@@ -156,7 +163,7 @@ export function StrokesInfoModal({
                   </svg>
                 </button>
               </th>
-              <th className="text-left py-2 px-2 font-semibold text-foreground">
+              {showSkins && <th className="text-left py-2 px-2 font-semibold text-foreground">
                 <button
                   onClick={(e) => openDefTooltip(e, "SH")}
                   aria-label="Define S.H."
@@ -169,17 +176,17 @@ export function StrokesInfoModal({
                     <circle cx="12" cy="16" r="1" />
                   </svg>
                 </button>
-              </th>
+              </th>}
             </tr>
           </thead>
           <tbody>
             {playerRows.map((row, i) => (
               <tr key={i} className="border-b border-border">
                 <td className="py-2 px-2 text-foreground">{row.name}</td>
-                <td className="py-2 px-2 text-left text-muted-foreground">{row.hi != null ? row.hi.toFixed(1) : "—"}</td>
+                <td className="py-2 px-2 text-left text-muted-foreground">{row.hi != null ? formatHandicapIndex(row.hi) : "—"}</td>
                 <td className="py-2 px-2 text-left text-muted-foreground">{row.ch != null ? row.ch : "—"}</td>
                 <td className="py-2 px-2 text-left text-muted-foreground">{row.so}</td>
-                <td className="py-2 px-2 text-left text-muted-foreground">{row.sh}</td>
+                {showSkins && <td className="py-2 px-2 text-left text-muted-foreground">{row.sh}</td>}
               </tr>
             ))}
           </tbody>

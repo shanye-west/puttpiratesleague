@@ -1,4 +1,4 @@
-import type { HoleInfo } from "../types";
+import type { CourseDoc, HoleInfo } from "../types";
 
 /**
  * Calculate GHIN course handicap from handicap index (unrounded).
@@ -11,6 +11,42 @@ export function calculateCourseHandicap(
   par: number
 ): number {
   return (handicapIndex * (slopeRating / 113)) + (courseRating - par);
+}
+
+/**
+ * Rounded course handicap for these tees — the number setupMatchCard stores
+ * (functions/src/ghin.ts). Null when the course is missing its rating, slope
+ * or par, which the server refuses rather than guessing.
+ */
+export function courseHandicapForTees(
+  handicapIndex: number,
+  course: Pick<CourseDoc, "rating" | "slope" | "par">
+): number | null {
+  const { rating, slope, par } = course;
+  if (typeof rating !== "number" || typeof slope !== "number" || typeof par !== "number") return null;
+  return Math.round(calculateCourseHandicap(handicapIndex, slope, rating, par));
+}
+
+/** Same bounds as setupMatchCard (a plus handicap is negative). */
+const MIN_HANDICAP_INDEX = -10;
+const MAX_HANDICAP_INDEX = 54;
+
+/**
+ * A typed Handicap Index, rounded to one decimal, or null when blank, not a
+ * number or out of range. Accepts GHIN's "+2.1" for a plus handicap (→ -2.1).
+ */
+export function parseHandicapIndex(text: string): number | null {
+  const t = text.trim().replace(",", ".");
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(t)) return null;
+  const magnitude = Number(t.replace(/^[+-]/, ""));
+  const value = t.startsWith("+") || t.startsWith("-") ? -magnitude : magnitude;
+  if (value < MIN_HANDICAP_INDEX || value > MAX_HANDICAP_INDEX) return null;
+  return Math.round(value * 10) / 10;
+}
+
+/** An index the way GHIN shows it: "7.4", or "+2.1" for a plus handicap. */
+export function formatHandicapIndex(handicapIndex: number): string {
+  return handicapIndex < 0 ? `+${(-handicapIndex).toFixed(1)}` : handicapIndex.toFixed(1);
 }
 
 /**
