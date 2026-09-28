@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { Fragment, useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 // RedirectCountdown removed; using explicit Go Home button instead
 import { doc, updateDoc } from "firebase/firestore";
@@ -38,6 +38,7 @@ import {
   DrivePickerModal,
   MatchStatusHeader,
   ScorecardTableHeader,
+  GhinDetailRow,
   type HoleData,
 } from "../components/match";
 import { useMatchData } from "../hooks/useMatchData";
@@ -50,6 +51,7 @@ import ComponentErrorBoundary from "../components/ComponentErrorBoundary";
 import CommentThread from "../components/CommentThread";
 import MatchSetupPanel from "../components/match/MatchSetupPanel";
 import { isLeagueTournament, leagueTeamColor, teamOfPlayer } from "../utils/leagueTeams";
+import { ghinAdjustedCard } from "../utils/ghin";
 
 import { predictClose, computeRunningStatus, type HoleData as MatchScoringHoleData, type HoleInput } from "../utils/matchScoring";
 
@@ -404,6 +406,22 @@ export default function Match() {
       getTotal: (team: "A" | "B", pIdx: number) => sumScores(holes, team, pIdx),
     };
   }, [holes, format]);
+
+  // GHIN column (league singles): the score each player posts to GHIN — every
+  // hole capped at net double bogey off their FULL course handicap. Display
+  // only: it never reads the match's spun-down strokesReceived and never feeds
+  // match scoring.
+  const showGhin = isLeague && format === "singles";
+  const [ghinExpanded, setGhinExpanded] = useState(false);
+  const toggleGhin = useCallback(() => setGhinExpanded((v) => !v), []);
+  const ghinCards = useMemo(() => {
+    if (!showGhin) return null;
+    const aLen = match?.teamAPlayers?.length || 1;
+    return {
+      A: ghinAdjustedCard(holes, holes.map((h) => h.input?.teamAPlayerGross), match?.courseHandicaps?.[0]),
+      B: ghinAdjustedCard(holes, holes.map((h) => h.input?.teamBPlayerGross), match?.courseHandicaps?.[aLen]),
+    };
+  }, [showGhin, holes, match?.teamAPlayers, match?.courseHandicaps]);
 
   // Player name helpers - memoized to prevent re-creation on every render
   // Logged-out (public) viewers see "First L." on scorecards instead of full last
@@ -1085,13 +1103,16 @@ export default function Match() {
                 totals={totals}
                 tSeries={tSeries}
                 courseTees={course?.tees || round?.course?.tee}
+                showGhin={showGhin}
+                ghinExpanded={ghinExpanded}
+                onToggleGhin={toggleGhin}
               />
               <tbody>
 
                 {/* Team A Player Rows - Using memoized PlayerScoreRow */}
                 {playerRows.filter(pr => pr.team === "A").map((pr, rowIdx, teamRows) => (
+                  <Fragment key={`row-${pr.team}-${pr.pIdx}`}>
                   <PlayerScoreRow
-                    key={`row-${pr.team}-${pr.pIdx}`}
                     erroredKeys={erroredKeys}
                     team={pr.team}
                     pIdx={pr.pIdx}
@@ -1111,7 +1132,21 @@ export default function Match() {
                     inTotal={totals.getIn(pr.team, pr.pIdx)}
                     totalScore={totals.getTotal(pr.team, pr.pIdx)}
                     closingHole={closingHole}
+                    showGhin={showGhin}
+                    ghinScore={ghinCards?.[pr.team]?.postable ?? null}
+                    ghinCapped={(ghinCards?.[pr.team]?.strokesRemoved ?? 0) > 0}
+                    ghinExpanded={ghinExpanded}
+                    onToggleGhin={toggleGhin}
                   />
+                  {showGhin && ghinExpanded && (
+                    <GhinDetailRow
+                      holes={holes}
+                      card={ghinCards?.[pr.team] ?? null}
+                      courseHandicap={getCourseHandicapFor(pr.team, pr.pIdx) ?? null}
+                      closingHole={closingHole}
+                    />
+                  )}
+                  </Fragment>
                 ))}
 
                 {/* Team A Score Row (Best Ball: low net, Shamble: low gross) */}
@@ -1201,6 +1236,7 @@ export default function Match() {
                   <td className="py-1 bg-muted border-l-2 border-border"></td>
                   {/* TOTAL status - always blank */}
                   <td className="py-1 bg-muted"></td>
+                  {showGhin && <td className="py-1 bg-muted border-l-2 border-border"></td>}
                 </tr>
 
                 {/* Team B Score Row (Best Ball: low net, Shamble: low gross) */}
@@ -1220,8 +1256,8 @@ export default function Match() {
 
                 {/* Team B Player Rows - Using memoized PlayerScoreRow */}
                 {playerRows.filter(pr => pr.team === "B").map((pr, rowIdx, teamRows) => (
+                  <Fragment key={`row-${pr.team}-${pr.pIdx}`}>
                   <PlayerScoreRow
-                    key={`row-${pr.team}-${pr.pIdx}`}
                     erroredKeys={erroredKeys}
                     team={pr.team}
                     pIdx={pr.pIdx}
@@ -1229,7 +1265,8 @@ export default function Match() {
                     color={pr.color}
                     holes={holes}
                     isLastOfTeam={rowIdx === teamRows.length - 1}
-                    isTeamB={true}
+                    // When open, the GHIN row below takes over the closing border
+                    isTeamB={!(showGhin && ghinExpanded)}
                     trackDrives={trackDrives}
                     getCellValue={pr.getCellValue}
                     isHoleLocked={isHoleLocked}
@@ -1242,7 +1279,22 @@ export default function Match() {
                     inTotal={totals.getIn(pr.team, pr.pIdx)}
                     totalScore={totals.getTotal(pr.team, pr.pIdx)}
                     closingHole={closingHole}
+                    showGhin={showGhin}
+                    ghinScore={ghinCards?.[pr.team]?.postable ?? null}
+                    ghinCapped={(ghinCards?.[pr.team]?.strokesRemoved ?? 0) > 0}
+                    ghinExpanded={ghinExpanded}
+                    onToggleGhin={toggleGhin}
                   />
+                  {showGhin && ghinExpanded && (
+                    <GhinDetailRow
+                      holes={holes}
+                      card={ghinCards?.[pr.team] ?? null}
+                      courseHandicap={getCourseHandicapFor(pr.team, pr.pIdx) ?? null}
+                      closingHole={closingHole}
+                      isLast={rowIdx === teamRows.length - 1}
+                    />
+                  )}
+                  </Fragment>
                 ))}
 
                 {/* DRIVE SELECTOR ROWS - Inside scorecard table */}
@@ -1268,6 +1320,14 @@ export default function Match() {
               </tbody>
             </table>
           </div>
+          {showGhin && ghinExpanded && (
+            <p className="px-3 py-2 text-xs text-muted-foreground border-t border-border">
+              <span className="font-semibold text-foreground">GHIN</span> is the total to post in the GHIN app. For
+              handicap purposes each hole maxes out at <span className="font-semibold">net double bogey</span>: par + 2 +
+              the strokes you get from your full course handicap (CH, blue dots) — not the match strokes. Highlighted
+              holes were capped. It fills in once all 18 holes are scored.
+            </p>
+          )}
         </div>
         )}
 

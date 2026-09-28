@@ -28,3 +28,6 @@ export { DrivePickerModal } from "./DrivePickerModal";
 export { MatchStatusHeader } from "./MatchStatusHeader";
 
 export { ScorecardTableHeader } from "./ScorecardTableHeader";
+
+export { GhinDetailRow } from "./GhinDetailRow";
+export type { GhinDetailRowProps } from "./GhinDetailRow";
