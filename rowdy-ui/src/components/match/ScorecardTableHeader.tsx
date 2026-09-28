@@ -1,5 +1,4 @@
-import { ChevronDown } from "lucide-react";
-import { SCORECARD_CELL_WIDTH, SCORECARD_GHIN_COL_WIDTH, SCORECARD_LABEL_WIDTH, SCORECARD_TOTAL_COL_WIDTH } from "../../constants";
+import { SCORECARD_CELL_WIDTH, SCORECARD_LABEL_WIDTH, SCORECARD_TOTAL_COL_WIDTH } from "../../constants";
 import { teeStyle } from "../../utils/teeColors";
 import type { HoleData } from "./PlayerScoreRow";
 
@@ -13,10 +12,6 @@ type ScorecardTableHeaderProps = {
   };
   tSeries: string;
   courseTees?: string;
-  /** Adds the GHIN column after TOT (league singles only). */
-  showGhin?: boolean;
-  ghinExpanded?: boolean;
-  onToggleGhin?: () => void;
 };
 
 export function ScorecardTableHeader({
@@ -24,9 +19,6 @@ export function ScorecardTableHeader({
   closingHole,
   totals,
   courseTees,
-  showGhin = false,
-  ghinExpanded = false,
-  onToggleGhin,
 }: ScorecardTableHeaderProps) {
   const cellWidth = SCORECARD_CELL_WIDTH;
   const labelWidth = SCORECARD_LABEL_WIDTH;
@@ -50,7 +42,7 @@ export function ScorecardTableHeader({
 
   return (
     <thead>
-      {/* HEADER ROW - Hole Numbers: 1-9 | OUT | 10-18 | IN | TOT (| GHIN) */}
+      {/* HEADER ROW - Hole Numbers: 1-9 | OUT | 10-18 | IN | TOT */}
       <tr style={{ 
         backgroundColor: "#1e293b",
         color: "white" 
@@ -121,33 +113,6 @@ export function ScorecardTableHeader({
             backgroundColor: "#475569"
           }}
         >TOT</th>
-        {showGhin && (
-          <th
-            className="p-0 border-l-2"
-            style={{
-              width: SCORECARD_GHIN_COL_WIDTH,
-              minWidth: SCORECARD_GHIN_COL_WIDTH,
-              backgroundColor: "#334155",
-              borderColor: "#475569",
-            }}
-          >
-            <button
-              type="button"
-              onClick={onToggleGhin}
-              aria-expanded={ghinExpanded}
-              aria-label={ghinExpanded ? "Hide GHIN adjusted scores" : "Show GHIN adjusted scores"}
-              className="flex w-full items-center justify-center gap-0.5 py-2 font-bold"
-            >
-              GHIN
-              <ChevronDown
-                size={12}
-                strokeWidth={3}
-                className={`transition-transform ${ghinExpanded ? "rotate-180" : ""}`}
-                aria-hidden="true"
-              />
-            </button>
-          </th>
-        )}
       </tr>
 
       {/* Handicap Row */}
@@ -172,7 +137,6 @@ export function ScorecardTableHeader({
         })}
         <td className="py-1 bg-muted border-l-2 border-border"></td>
         <td className="py-1 bg-muted"></td>
-        {showGhin && <td className="py-1 bg-muted border-l-2 border-border"></td>}
       </tr>
 
       {/* Yardage Row - tinted to the tee color when the course names one */}
@@ -224,12 +188,6 @@ export function ScorecardTableHeader({
         <td className={`py-1 ${tee ? "" : "bg-muted"}`} style={teeCell}>
           {holes.reduce((sum, h) => sum + (h.yards || 0), 0) || ""}
         </td>
-        {showGhin && (
-          <td
-            className={`py-1 border-l-2 ${tee ? "" : "bg-muted border-border"}`}
-            style={{ ...teeCell, ...teeDivider }}
-          />
-        )}
       </tr>
 
       {/* Par Row */}
@@ -254,7 +212,6 @@ export function ScorecardTableHeader({
         })}
         <td className="py-1.5 bg-muted font-bold border-l-2 border-border">{totals.parIn || ""}</td>
         <td className="py-1.5 bg-muted font-bold">{totals.parTotal || ""}</td>
-        {showGhin && <td className="py-1.5 bg-muted border-l-2 border-border"></td>}
       </tr>
     </thead>
   );

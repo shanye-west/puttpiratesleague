@@ -49,6 +49,11 @@ export function formatHandicapIndex(handicapIndex: number): string {
   return handicapIndex < 0 ? `+${(-handicapIndex).toFixed(1)}` : handicapIndex.toFixed(1);
 }
 
+/** A course handicap the way GHIN shows it: "+2" for a plus handicap. */
+export function formatCourseHandicap(courseHandicap: number): string {
+  return courseHandicap < 0 ? `+${-courseHandicap}` : String(courseHandicap);
+}
+
 /**
  * Calculate which holes receive strokes for skins based on handicap index and percentage.
  * Uses GHIN formula: unrounded courseHandicap × percentage, THEN round.

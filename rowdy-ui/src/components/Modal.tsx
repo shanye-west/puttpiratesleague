@@ -11,6 +11,8 @@ export interface ModalProps {
   children: ReactNode;
   /** Maximum width class (default: max-w-sm) */
   maxWidth?: string;
+  /** Padding class (default: p-6) — tighter for wide content on phones */
+  padding?: string;
   /** Accessible label for the modal */
   ariaLabel?: string;
 }
@@ -31,6 +33,7 @@ export function Modal({
   title,
   children,
   maxWidth = "max-w-sm",
+  padding = "p-6",
   ariaLabel,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -76,7 +79,7 @@ export function Modal({
       className="backdrop:bg-black/50 bg-transparent p-0 border-0"
     >
       <div 
-        className={`bg-card rounded-xl shadow-xl p-6 ${maxWidth}`}
+        className={`bg-card rounded-xl shadow-xl ${padding} ${maxWidth}`}
         style={{ width: 'calc(100vw - 32px)' }}
       >
         {title && (

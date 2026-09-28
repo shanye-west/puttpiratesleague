@@ -29,5 +29,5 @@ export { MatchStatusHeader } from "./MatchStatusHeader";
 
 export { ScorecardTableHeader } from "./ScorecardTableHeader";
 
-export { GhinDetailRow } from "./GhinDetailRow";
-export type { GhinDetailRowProps } from "./GhinDetailRow";
+export { GhinScorecardModal } from "./GhinScorecardModal";
+export type { GhinScorecardPlayer } from "./GhinScorecardModal";

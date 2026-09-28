@@ -23,7 +23,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { matchApi } from "../../api/match";
 import { getErrorMessage } from "../../api/errors";
 import { allocateStrokes } from "../../utils/captainsMatchScoring";
-import { courseHandicapForTees, formatHandicapIndex, parseHandicapIndex } from "../../utils/ghin";
+import { courseHandicapForTees, formatCourseHandicap as fmtCh, formatHandicapIndex, parseHandicapIndex } from "../../utils/ghin";
 import type { CourseDoc, MatchDoc } from "../../types";
 
 interface Props {
@@ -38,6 +38,8 @@ interface Props {
   onSaved?: () => void;
   /** Admin page: start expanded. */
   defaultOpen?: boolean;
+  /** Opens the GHIN (net double bogey) card — adds a GHIN button once set up. */
+  onOpenGhin?: () => void;
 }
 
 const inputClass =
@@ -48,9 +50,6 @@ const NEW_COURSE = "__new_course__";
 const NEW_TEES = "__new_tees__";
 
 const TEES_INCOMPLETE = "These tees are missing their rating, slope or par — ask an admin to fill them in.";
-
-/** A course handicap the way GHIN shows it: "+2" for a plus handicap. */
-const fmtCh = (ch: number) => (ch < 0 ? `+${-ch}` : String(ch));
 
 /** Courses grouped by name (one <optgroup> per course, one <option> per tees). */
 function groupByName(courses: CourseDoc[]): { name: string; items: CourseDoc[] }[] {
@@ -70,7 +69,7 @@ function indexText(handicapIndexes: number[] | undefined, i: number): string {
   return hi != null ? formatHandicapIndex(hi) : "";
 }
 
-export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, nameOf, onSaved, defaultOpen }: Props) {
+export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, nameOf, onSaved, defaultOpen, onOpenGhin }: Props) {
   const aId = match.teamAPlayers?.[0]?.playerId ?? "";
   const bId = match.teamBPlayers?.[0]?.playerId ?? "";
   const isSetUp = !!match.courseId;
@@ -178,12 +177,19 @@ export default function MatchSetupPanel({ match, canSetup, isAdmin, hasScores, n
               <span>Course and strokes not set.</span>
             )}
           </div>
-          {canEditNow && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
-              <Settings2 className="h-4 w-4" />
-              {isSetUp ? "Change" : "Set up"}
-            </Button>
-          )}
+          <div className="flex shrink-0 gap-2">
+            {canEditNow && (
+              <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+                <Settings2 className="h-4 w-4" />
+                {isSetUp ? "Change" : "Set up"}
+              </Button>
+            )}
+            {onOpenGhin && isSetUp && a != null && b != null && (
+              <Button type="button" variant="outline" size="sm" onClick={onOpenGhin} aria-label="GHIN scores to post">
+                GHIN
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     );

@@ -37,14 +37,6 @@ export interface PlayerScoreRowProps {
   totalScore: number | null;
   /** 0-indexed hole where match closed (null if match ongoing or went to 18) */
   closingHole?: number | null;
-  /** Adds the GHIN column after TOT (league singles only). */
-  showGhin?: boolean;
-  /** Net-double-bogey adjusted total to post; null until all 18 are in. */
-  ghinScore?: number | null;
-  /** Some hole was capped at net double bogey — flags the cell. */
-  ghinCapped?: boolean;
-  ghinExpanded?: boolean;
-  onToggleGhin?: () => void;
 }
 
 /** Memoized player score row - renders 18 ScoreInputCells + totals */
@@ -69,11 +61,6 @@ export const PlayerScoreRow = memo(function PlayerScoreRow({
   inTotal,
   totalScore,
   closingHole,
-  showGhin = false,
-  ghinScore = null,
-  ghinCapped = false,
-  ghinExpanded = false,
-  onToggleGhin,
 }: PlayerScoreRowProps) {
   // Team B last row has thicker border
   const rowClassName = isTeamB && isLastOfTeam 
@@ -168,23 +155,6 @@ export const PlayerScoreRow = memo(function PlayerScoreRow({
       <td className="py-1 bg-muted font-bold text-foreground text-base">
         {totalScore ?? "–"}
       </td>
-      {/* GHIN — tap to show the net-double-bogey breakdown row */}
-      {showGhin && (
-        <td className="p-0 bg-muted border-l-2 border-border">
-          <button
-            type="button"
-            onClick={onToggleGhin}
-            aria-expanded={ghinExpanded}
-            aria-label={`GHIN score ${ghinScore ?? "not ready"}${ghinCapped ? ", some holes capped at net double bogey" : ""}. ${ghinExpanded ? "Hide" : "Show"} breakdown`}
-            className="relative flex h-full w-full items-center justify-center py-1 font-bold text-base text-foreground"
-          >
-            {ghinScore ?? "–"}
-            {ghinCapped && ghinScore != null && (
-              <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-            )}
-          </button>
-        </td>
-      )}
     </tr>
   );
 });
