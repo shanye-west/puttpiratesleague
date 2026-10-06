@@ -154,9 +154,10 @@ describe("computeLeagueStandings — teams", () => {
     expect(t("cq")).toMatchObject({ mp: 2, w: 1, l: 0, t: 1, extra: 1, points: 2.5, rank: 2 });
     expect(t("bcb")).toMatchObject({ mp: 1, w: 1, extra: 0, points: 1 });
     expect(t("rw")).toMatchObject({ mp: 2, l: 2, points: 0, rank: 4 });
-    expect(grid.wir.r1).toEqual({ points: 2.5, projectedPoints: 2.5, bonus: true, bonusPending: false });
+    expect(grid.wir.r1).toEqual({ points: 2.5, projectedPoints: 2.5, bonus: true, bonusPending: false, played: true });
     expect(formatGridCell(grid.wir.r1)).toBe("3.5");
-    expect(formatGridCell(grid.rw.r2)).toBe("");
+    expect(formatGridCell(grid.rw.r1)).toBe("0"); // played, lost both
+    expect(formatGridCell(grid.rw.r2)).toBe("-"); // no match that month
   });
 });
 
@@ -177,7 +178,7 @@ describe("prior (carried-in) standings", () => {
     const prior = {
       asOf: "test",
       players: { phil: { mp: 6, w: 5, l: 0, t: 1 }, mo: { mp: 5, w: 2, l: 3, t: 0 }, berg: { mp: 5, w: 1, l: 4, t: 0 } },
-      teams: { cq: { r1: { points: 3.5, bonus: true } }, wir: { r1: { points: 2 }, r2: { points: 0.5 } } },
+      teams: { cq: { r1: { points: 3.5, bonus: true } }, wir: { r1: { points: 2 }, r2: { points: 0.5 } }, bcb: { r1: { points: 0 } } },
     };
     const matchesByRound = { r2: [match("x", "phil", "mo", "teamB", { roundId: "r2" })] }; // mo beats phil in r2
     const { individual, teams: rowsT, grid, bonusByRound } = computeLeagueStandings({ rounds, matchesByRound, leagueTeams: teams, prior });
@@ -190,6 +191,9 @@ describe("prior (carried-in) standings", () => {
     expect(bonusByRound.r2).toMatchObject({ teamId: "wir", reason: "outright" });
     expect(grid.cq.r1).toMatchObject({ points: 3.5, bonus: true });
     expect(grid.wir.r2).toMatchObject({ points: 1.5, bonus: true });
+    expect(formatGridCell(grid.bcb.r1)).toBe("0"); // carried-in month, no points
+    expect(formatGridCell(grid.cq.r2)).toBe("0"); // app match lost
+    expect(formatGridCell(grid.rw.r1)).toBe("-"); // neither carried in nor played
     const t = (id: string) => rowsT.find((r) => r.teamId === id)!;
     expect(t("cq")).toMatchObject({ mp: 7, w: 5, l: 1, t: 1, extra: 1, points: 4.5 });
     expect(t("wir")).toMatchObject({ mp: 6, w: 3, l: 3, extra: 1, points: 4.5 });

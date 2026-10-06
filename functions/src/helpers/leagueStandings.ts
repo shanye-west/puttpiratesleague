@@ -77,6 +77,8 @@ export interface GridCell {
   projectedPoints: number;
   bonus: boolean;
   bonusPending: boolean;
+  /** A member has a finished or under-way match this month, or the carried-in record covers it. */
+  played: boolean;
 }
 
 export interface LeagueStandings {
@@ -240,10 +242,10 @@ export function computeLeagueStandings(input: StandingsInput): LeagueStandings {
   for (const round of sorted) {
     const pv = round.pointsValue ?? 1;
     const matches = matchesByRound[round.id] ?? [];
-    const cellPts: Record<string, { points: number; projected: number }> = {};
+    const cellPts: Record<string, { points: number; projected: number; played: boolean }> = {};
     for (const t of leagueTeams) {
-      const carried = prior?.teams?.[t.id]?.[round.id]?.points ?? 0;
-      cellPts[t.id] = { points: carried, projected: carried };
+      const carried = prior?.teams?.[t.id]?.[round.id];
+      cellPts[t.id] = { points: carried?.points ?? 0, projected: carried?.points ?? 0, played: !!carried };
     }
 
     for (const m of matches) {
@@ -265,6 +267,7 @@ export function computeLeagueStandings(input: StandingsInput): LeagueStandings {
         }
         const teamId = teamOf[pid];
         if (teamId) {
+          cellPts[teamId].played = true;
           cellPts[teamId].projected += mine;
           if (closed) cellPts[teamId].points += mine;
         }
@@ -283,6 +286,7 @@ export function computeLeagueStandings(input: StandingsInput): LeagueStandings {
         projectedPoints: c.projected,
         bonus: isBonus,
         bonusPending: bonus.pending && bonus.leaderId === t.id,
+        played: c.played,
       };
       teamPts[t.id].points += c.points;
       teamPts[t.id].projected += c.projected;
@@ -329,11 +333,14 @@ export function computeLeagueStandings(input: StandingsInput): LeagueStandings {
   return { individual, teams, grid, bonusByRound };
 }
 
-/** Cell label: match points with the bonus folded in (the view stars it); blank for an unplayed month. */
+/**
+ * Cell label: match points with the bonus folded in (the view stars it), "0"
+ * when the team played and scored nothing, "-" when it had no match that month.
+ */
 export function formatGridCell(cell: GridCell | undefined): string {
   if (!cell) return "";
   if (cell.bonus) return fmtPts(cell.points + 1);
-  return cell.points === 0 && cell.projectedPoints === 0 ? "" : fmtPts(cell.points);
+  return cell.played ? fmtPts(cell.points) : "-";
 }
 
 export function fmtPts(n: number): string {

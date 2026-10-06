@@ -226,12 +226,13 @@ export const TeamMonthGrid = memo(function TeamMonthGrid({ standings, leagueTeam
                             className={cn(
                               "py-2 text-center tabular-nums",
                               cell?.bonus && "font-bold text-foreground",
-                              r.locked === false && cell && cell.projectedPoints > cell.points && "text-muted-foreground"
+                              r.locked === false && cell && cell.projectedPoints > cell.points && "text-muted-foreground",
+                              cell && !cell.played && !cell.bonus && "text-muted-foreground"
                             )}
                           >
                             {/* The star hangs off the right edge so the number stays centered. */}
                             <span className="relative inline-block">
-                              {formatGridCell(cell) || (cell && cell.projectedPoints > 0 ? `(${fmtPts(cell.projectedPoints)})` : "")}
+                              {formatGridCell(cell)}
                               {(cell?.bonus || pendingLead) && (
                                 <span className={cn("absolute left-full", pendingLead && "text-amber-600")}>*</span>
                               )}
