@@ -155,7 +155,7 @@ describe("computeLeagueStandings — teams", () => {
     expect(t("bcb")).toMatchObject({ mp: 1, w: 1, extra: 0, points: 1 });
     expect(t("rw")).toMatchObject({ mp: 2, l: 2, points: 0, rank: 4 });
     expect(grid.wir.r1).toEqual({ points: 2.5, projectedPoints: 2.5, bonus: true, bonusPending: false });
-    expect(formatGridCell(grid.wir.r1)).toBe("3.5*");
+    expect(formatGridCell(grid.wir.r1)).toBe("3.5");
     expect(formatGridCell(grid.rw.r2)).toBe("");
   });
 });

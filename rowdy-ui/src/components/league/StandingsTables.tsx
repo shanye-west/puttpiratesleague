@@ -229,8 +229,13 @@ export const TeamMonthGrid = memo(function TeamMonthGrid({ standings, leagueTeam
                               r.locked === false && cell && cell.projectedPoints > cell.points && "text-muted-foreground"
                             )}
                           >
-                            {formatGridCell(cell) || (cell && cell.projectedPoints > 0 ? `(${fmtPts(cell.projectedPoints)})` : "")}
-                            {pendingLead && <span className="text-amber-600">*</span>}
+                            {/* The star hangs off the right edge so the number stays centered. */}
+                            <span className="relative inline-block">
+                              {formatGridCell(cell) || (cell && cell.projectedPoints > 0 ? `(${fmtPts(cell.projectedPoints)})` : "")}
+                              {(cell?.bonus || pendingLead) && (
+                                <span className={cn("absolute left-full", pendingLead && "text-amber-600")}>*</span>
+                              )}
+                            </span>
                           </td>
                         );
                       })}
