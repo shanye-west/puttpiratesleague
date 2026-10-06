@@ -174,7 +174,7 @@ interface GridProps {
   rounds: RoundDoc[];
 }
 
-/** Team × month grid ("4 + 1" = 4 match points plus the monthly bonus). */
+/** Team × month grid ("5*" = 4 match points plus the monthly bonus). */
 export const TeamMonthGrid = memo(function TeamMonthGrid({ standings, leagueTeams, rounds }: GridProps) {
   if (rounds.length === 0) return null;
   const monthLabel = (r: RoundDoc, i: number) => (r.name ? r.name.slice(0, 3) : `R${r.day ?? i + 1}`);
@@ -182,7 +182,7 @@ export const TeamMonthGrid = memo(function TeamMonthGrid({ standings, leagueTeam
     <section className="space-y-3">
       <div className="flex items-center justify-between px-1">
         <div className={sectionLabel}>Month by month</div>
-        <span className="text-[0.6rem] font-medium uppercase tracking-wider text-muted-foreground">+1 = bonus point</span>
+        <span className="text-[0.6rem] font-medium uppercase tracking-wider text-muted-foreground">* = bonus point</span>
       </div>
       <Card className="overflow-hidden border-border/80 bg-card/85">
         <CardContent className="p-0">
@@ -230,7 +230,7 @@ export const TeamMonthGrid = memo(function TeamMonthGrid({ standings, leagueTeam
                             )}
                           >
                             {formatGridCell(cell) || (cell && cell.projectedPoints > 0 ? `(${fmtPts(cell.projectedPoints)})` : "")}
-                            {pendingLead && <span className="text-amber-600"> *</span>}
+                            {pendingLead && <span className="text-amber-600">*</span>}
                           </td>
                         );
                       })}

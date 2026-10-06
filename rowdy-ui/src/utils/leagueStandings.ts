@@ -320,12 +320,11 @@ export function computeLeagueStandings(input: StandingsInput): LeagueStandings {
   return { individual, teams, grid, bonusByRound };
 }
 
-/** "4 + 1" style cell label; blank for an unplayed month. */
+/** Cell label: match points, with the bonus folded in and starred ("4.5*"); blank for an unplayed month. */
 export function formatGridCell(cell: GridCell | undefined): string {
   if (!cell) return "";
-  const base = cell.points === 0 && cell.projectedPoints === 0 ? "" : fmtPts(cell.points);
-  if (cell.bonus) return `${base || "0"} + 1`;
-  return base;
+  if (cell.bonus) return `${fmtPts(cell.points + 1)}*`;
+  return cell.points === 0 && cell.projectedPoints === 0 ? "" : fmtPts(cell.points);
 }
 
 export function fmtPts(n: number): string {

@@ -11,8 +11,8 @@ function monthBonusLabel(standings: LeagueStandings, leagueTeams: LeagueTeam[], 
 }
 
 /**
- * One month's team battle: each league team's points that month (+1 for the
- * bonus, in-progress matches as a projected "(+n)"), leaders first. `standings`
+ * One month's team battle: each league team's points that month (bonus folded
+ * in and starred, in-progress matches as a projected "(+n)"), leaders first. `standings`
  * may cover the whole season or just this month — only this month's grid
  * column is read.
  */
@@ -49,7 +49,7 @@ export function MonthTeamPoints({
                 <span className="truncate">{team.name}</span>
               </span>
               <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums" style={{ color }}>
-                {fmtPts(cell?.points ?? 0)}{cell?.bonus ? " + 1" : ""}
+                {cell?.bonus ? `${fmtPts(cell.points + 1)}*` : fmtPts(cell?.points ?? 0)}
                 {projected > 0 && <span className="ml-1 text-[0.6rem] font-semibold text-muted-foreground">(+{fmtPts(projected)})</span>}
               </span>
             </div>
