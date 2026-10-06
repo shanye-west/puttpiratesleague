@@ -36,13 +36,15 @@ function teamLabel(team: "teamA" | "teamB", teamAName: string, teamBName: string
   return team === "teamA" ? teamAName : teamBName;
 }
 
-/** Final-result line, e.g. "Aviators won 3&2", "Aviators won 2 up", "Match halved". */
+/** Final-result line, e.g. "Neal Muir def. Jason Padula 4&3", "… def. … 2 up", "Match halved". */
 function resultBody(status: Partial<MatchStatus>, winner: unknown, teamAName: string, teamBName: string): string {
   if (winner === "teamA" || winner === "teamB") {
     const name = teamLabel(winner, teamAName, teamBName);
+    const loser = teamLabel(winner === "teamA" ? "teamB" : "teamA", teamAName, teamBName);
     const margin = Math.abs(status.margin ?? 0);
     const holesLeft = 18 - (status.thru ?? 18);
-    return holesLeft > 0 ? `${name} won ${margin}&${holesLeft}` : `${name} won ${margin} up`;
+    const score = holesLeft > 0 ? `${margin}&${holesLeft}` : `${margin} up`;
+    return `${name} def. ${loser} ${score}`;
   }
   return "Match halved";
 }
