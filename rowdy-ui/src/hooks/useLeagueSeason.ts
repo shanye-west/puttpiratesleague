@@ -2,9 +2,10 @@
  * useLeagueSeason — the Putt Pirates season in one hook: rounds (months),
  * matches, the rostered players, and the computed standings.
  *
- * Matches of locked months are read once (cache-first) and only the open
- * months keep a live listener (`splitLockedRounds`), so once the admin locks
- * each finished month the steady-state cost is the current month's 8 docs.
+ * Matches of locked months are read once (cache-first, plus one background
+ * server refresh so a result corrected after the lock still shows) and only the
+ * open months keep a live listener (`splitLockedRounds`), so once each finished
+ * month locks the steady-state cost is the current month's 8 docs.
  * For the active season that subscription is shared app-wide and kept open
  * (SeasonDataContext), so it is paid once per session, not once per screen.
  */

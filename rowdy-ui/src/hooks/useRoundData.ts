@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { collection, doc, query, where, onSnapshot } from "firebase/firestore";
+import { collection, doc, query, where, onSnapshot, type QuerySnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import type { RoundDoc, TournamentDoc, MatchDoc, PlayerDoc, CourseDoc } from "../types";
 import { ensureTournamentTeamColors } from "../utils/teamColors";
@@ -193,24 +193,25 @@ export function useRoundData(roundId: string | undefined): UseRoundDataResult {
     
     // If round is locked, use one-time batch read (static data)
     if (round.locked) {
-      const fetchStaticMatches = async () => {
-        try {
-          // Locked round = static result set, so read cache-first.
-          const snap = await getDocsCacheFirst(
-            query(collection(db, "matches"), where("roundId", "==", roundId))
-          );
-          const ms = snap.docs
-            .map(d => ({ id: d.id, ...d.data() } as MatchDoc))
-            .sort((a, b) => (a.matchNumber ?? 0) - (b.matchNumber ?? 0) || a.id.localeCompare(b.id));
-          setMatches(ms);
-          setMatchesLoaded(true);
-        } catch (err) {
-          console.error("Matches fetch error:", err);
-          setMatchesLoaded(true);
-        }
+      let cancelled = false;
+      const apply = (snap: QuerySnapshot) => {
+        if (cancelled) return;
+        const ms = snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as MatchDoc))
+          .sort((a, b) => (a.matchNumber ?? 0) - (b.matchNumber ?? 0) || a.id.localeCompare(b.id));
+        setMatches(ms);
+        setMatchesLoaded(true);
       };
-      fetchStaticMatches();
-      return;
+      // Locked round: paint cache-first, then refresh once from the server in
+      // the background — an admin can still correct a result after the month
+      // locks, and a cache-only read would never pick that up.
+      getDocsCacheFirst(query(collection(db, "matches"), where("roundId", "==", roundId)), apply)
+        .then(apply)
+        .catch((err) => {
+          console.error("Matches fetch error:", err);
+          if (!cancelled) setMatchesLoaded(true);
+        });
+      return () => { cancelled = true; };
     }
     
     // Real-time subscription for active/unlocked rounds

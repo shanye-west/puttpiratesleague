@@ -84,7 +84,8 @@ export interface UseTournamentDataOptions {
   preferDenormalizedTotals?: boolean;
   /**
    * For callers that need per-match data (so can't use denormalized totals):
-   * fetch matches of locked rounds once, cache-first (they're static), and keep
+   * fetch matches of locked rounds once, cache-first with one background server
+   * refresh (an admin can still correct a result after a month locks), and keep
    * a live subscription only on matches of unlocked rounds. Mirrors the
    * locked/unlocked split in useRoundData. With every round locked, no live
    * match listener remains at all.
@@ -302,15 +303,15 @@ export function useTournamentData(options: UseTournamentDataOptions = {}): UseTo
       const unsubs: Array<() => void> = [];
       // Locked and unlocked cover disjoint roundIds, and each `in` chunk covers
       // disjoint roundIds within its source, so merging by key is safe.
-      const staticBucket: Record<string, MatchDoc[]> = {};
+      const staticBuckets: Record<number, Record<string, MatchDoc[]>> = {};
       const liveBuckets: Record<number, Record<string, MatchDoc[]>> = {};
       let staticPending = lockedIds.length > 0 ? 1 : 0;
       let livePending = 0;
 
       const publish = () => {
         if (cancelled) return;
-        const merged: Record<string, MatchDoc[]> = { ...staticBucket };
-        Object.values(liveBuckets).forEach(chunkBucket => {
+        const merged: Record<string, MatchDoc[]> = {};
+        [...Object.values(staticBuckets), ...Object.values(liveBuckets)].forEach(chunkBucket => {
           Object.assign(merged, chunkBucket);
         });
         setMatchesByRound(merged);
@@ -326,13 +327,20 @@ export function useTournamentData(options: UseTournamentDataOptions = {}): UseTo
       };
 
       if (lockedIds.length > 0) {
-        // Locked rounds = static result sets → one-time cache-first reads.
+        // Locked rounds rarely change, so no live listener: paint from the
+        // on-device cache, then refresh once from the server in the background.
+        // Without the refresh, a result an admin corrects after the month locked
+        // would never reach a device that had already cached that month.
         Promise.all(
-          chunk(lockedIds).map(async ids => {
+          chunk(lockedIds).map(async (ids, i) => {
             const snap = await getDocsCacheFirst(
-              query(collection(db, "matches"), where("roundId", "in", ids))
+              query(collection(db, "matches"), where("roundId", "in", ids)),
+              (fresh) => {
+                staticBuckets[i] = bucketSnap(fresh);
+                publish();
+              }
             );
-            Object.assign(staticBucket, bucketSnap(snap));
+            staticBuckets[i] = bucketSnap(snap);
           })
         )
           .catch(err => console.error("Locked-round matches fetch error:", err))
